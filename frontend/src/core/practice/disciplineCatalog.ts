@@ -129,7 +129,7 @@ const _CATALOGUE: readonly Discipline[] = [
     id: "programming_logic",
     subject: "programming",
     title: "Lógica de programación",
-    modes: ["implement", "find_error", "explain", "pg_true_false", "pg_classify", "pg_compare", "cloze", "trace", "decompose", "test", "analyze", "review", "debug"],
+    modes: ["implement", "find_error", "explain", "pg_true_false", "pg_quiz", "project_structure", "pg_classify", "pg_compare", "cloze", "trace", "decompose", "test", "analyze", "review", "debug"],
     framing:
       "Language-agnostic logic exercises (pseudocode or simple Python) set in small real " +
       "situations: processing a list of orders, validating form input, counting events in " +
@@ -167,7 +167,7 @@ const _CATALOGUE: readonly Discipline[] = [
     id: "python",
     subject: "programming",
     title: "Python",
-    modes: ["implement", "debug", "refactor", "explain", "pg_true_false", "pg_classify", "pg_compare", "trace", "review", "test", "analyze", "port"],
+    modes: ["implement", "debug", "refactor", "explain", "pg_true_false", "pg_quiz", "project_structure", "pg_classify", "pg_compare", "trace", "review", "test", "analyze", "port"],
     framing:
       "Every exercise must be framed as an automation task, not a generic backend or " +
       "algorithm drill: a script reacting to a webhook, a batch job processing a CSV/JSON " +
@@ -287,7 +287,7 @@ const _CATALOGUE: readonly Discipline[] = [
     id: "javascript",
     subject: "programming",
     title: "JavaScript",
-    modes: ["implement", "debug", "refactor", "explain", "pg_true_false", "pg_classify", "pg_compare", "trace", "review", "test", "port"],
+    modes: ["implement", "debug", "refactor", "explain", "pg_true_false", "pg_quiz", "project_structure", "pg_classify", "pg_compare", "trace", "review", "test", "port"],
     framing:
       "Every exercise must be framed as a real frontend/automation task: a component " +
       "consuming a REST API, a form validation pipeline, a data transformation feeding a " +
@@ -394,7 +394,7 @@ const _CATALOGUE: readonly Discipline[] = [
     id: "sql",
     subject: "programming",
     title: "SQL (PostgreSQL)",
-    modes: ["design", "implement", "debug", "refactor", "explain", "pg_true_false", "pg_classify", "pg_compare", "query", "analyze", "review"],
+    modes: ["design", "implement", "debug", "refactor", "explain", "pg_true_false", "pg_quiz", "project_structure", "pg_classify", "pg_compare", "query", "analyze", "review"],
     framing:
       "Every exercise must be framed as a real database/automation task: a schema for a " +
       "webhook-driven pipeline, a query feeding an n8n workflow, a transaction wrapping a " +
@@ -496,7 +496,7 @@ const _CATALOGUE: readonly Discipline[] = [
     id: "git",
     subject: "programming",
     title: "Git",
-    modes: ["commands", "find_error", "explain", "pg_true_false", "pg_classify", "pg_compare"],
+    modes: ["commands", "find_error", "explain", "pg_true_false", "pg_quiz", "project_structure", "pg_classify", "pg_compare"],
     framing:
       "Every exercise is real and situated in the daily work of a solo full-stack developer: " +
       "a repo with concrete files, realistic commit messages, domain branch names " +
@@ -806,7 +806,7 @@ const _CATALOGUE: readonly Discipline[] = [
     id: "typescript",
     subject: "programming",
     title: "TypeScript",
-    modes: ["implement", "debug", "refactor", "explain", "pg_true_false", "pg_classify", "pg_compare", "cloze", "trace", "review", "test", "port"],
+    modes: ["implement", "debug", "refactor", "explain", "pg_true_false", "pg_quiz", "project_structure", "pg_classify", "pg_compare", "cloze", "trace", "review", "test", "port"],
     framing:
       "Every exercise is real TypeScript work: typing an API response, narrowing a union, a generic helper, a module " +
       "shared by an Electron main process and its renderer, a Node script. Strict mode is on; `any` is never the answer. " +
@@ -842,7 +842,7 @@ const _CATALOGUE: readonly Discipline[] = [
     id: "backend",
     subject: "programming",
     title: "Backend",
-    modes: ["implement", "design", "debug", "refactor", "explain", "pg_true_false", "pg_classify", "pg_compare", "review", "test", "trace", "decompose", "analyze", "port"],
+    modes: ["implement", "design", "debug", "refactor", "explain", "pg_true_false", "pg_quiz", "project_structure", "pg_classify", "pg_compare", "review", "test", "trace", "decompose", "analyze", "port"],
     framing:
       "Every exercise is a real backend task in Python (FastAPI) or TypeScript (Node): an endpoint with its contract and " +
       "status codes, a service layer rule, a webhook receiver that must be idempotent, an authentication check, a " +
@@ -889,7 +889,7 @@ const _CATALOGUE: readonly Discipline[] = [
     id: "frontend",
     subject: "programming",
     title: "Frontend",
-    modes: ["implement", "debug", "refactor", "explain", "pg_true_false", "pg_classify", "pg_compare", "cloze", "review", "test", "trace", "decompose", "analyze"],
+    modes: ["implement", "debug", "refactor", "explain", "pg_true_false", "pg_quiz", "project_structure", "pg_classify", "pg_compare", "cloze", "review", "test", "trace", "decompose", "analyze"],
     framing:
       "Every exercise is a real UI task with React and TypeScript: a form with validation, a list fed by an API with its " +
       "loading and error states, a component whose state is in the wrong place, an effect with a stale closure. State is " +
@@ -931,7 +931,7 @@ const _CATALOGUE: readonly Discipline[] = [
     id: "desktop",
     subject: "programming",
     title: "Apps de escritorio (Electron)",
-    modes: ["implement", "design", "debug", "refactor", "explain", "pg_true_false", "pg_classify", "pg_compare", "review", "test", "trace", "decompose", "analyze"],
+    modes: ["implement", "design", "debug", "refactor", "explain", "pg_true_false", "pg_quiz", "project_structure", "pg_classify", "pg_compare", "review", "test", "trace", "decompose", "analyze"],
     framing:
       "Every exercise is real Electron + TypeScript work on a Windows desktop app: what runs in the main process and " +
       "what in the renderer, a typed IPC call through a preload script, a native dialog, a file the app writes, a " +
@@ -972,7 +972,7 @@ const _CATALOGUE: readonly Discipline[] = [
     id: "automation",
     subject: "programming",
     title: "Automatización",
-    modes: ["implement", "design", "debug", "refactor", "explain", "pg_true_false", "pg_classify", "pg_compare", "review", "test", "trace", "decompose", "port"],
+    modes: ["implement", "design", "debug", "refactor", "explain", "pg_true_false", "pg_quiz", "project_structure", "pg_classify", "pg_compare", "review", "test", "trace", "decompose", "port"],
     framing:
       "Every exercise is an automation task: a script reacting to a webhook, a batch job over a CSV/JSON export, a " +
       "pipeline step moving data between two systems, a scheduled job, an n8n workflow or Power Automate flow, a retry " +
@@ -1011,7 +1011,7 @@ const _CATALOGUE: readonly Discipline[] = [
     id: "mobile",
     subject: "programming",
     title: "Móvil",
-    modes: ["implement", "design", "debug", "refactor", "explain", "pg_true_false", "pg_classify", "pg_compare", "review", "test", "trace", "decompose", "analyze", "port"],
+    modes: ["implement", "design", "debug", "refactor", "explain", "pg_true_false", "pg_quiz", "project_structure", "pg_classify", "pg_compare", "review", "test", "trace", "decompose", "analyze", "port"],
     framing:
       "Every exercise is real mobile work (TypeScript with React Native, and Kotlin for native modules): a list with " +
       "thousands of rows, local storage and sync with the desktop vault, a permission flow, background limits, a bridge " +
@@ -1040,7 +1040,7 @@ const _CATALOGUE: readonly Discipline[] = [
     id: "devtools",
     subject: "programming",
     title: "Herramientas y calidad",
-    modes: ["commands", "implement", "debug", "find_error", "explain", "pg_true_false", "pg_classify", "pg_compare", "review", "test", "design"],
+    modes: ["commands", "implement", "debug", "find_error", "explain", "pg_true_false", "pg_quiz", "project_structure", "pg_classify", "pg_compare", "review", "test", "design"],
     framing:
       "Every exercise is real day-to-day tooling for a solo developer: a Dockerfile or compose file that must build and " +
       "run, a CI pipeline step, a package manager and lockfile problem, a test setup, a shell or PowerShell script, a " +

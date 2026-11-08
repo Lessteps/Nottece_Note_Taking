@@ -36,6 +36,8 @@ export interface SessionConfig {
   words?: string[];
   /** ids of those words: written into the exercises so their reviews follow the grade. */
   wordIds?: string[];
+  /** Programming: titles of the topics taught before this one in the route (for taught-only scope). */
+  taughtBefore?: string[];
 }
 
 export interface PlannedExercise {
@@ -115,6 +117,7 @@ export function buildExerciseGenerationPrompt(
   countToGenerate: number,
   learning: string[] = [],
   words: string[] = [],
+  taughtBefore: string[] = [],
 ): Array<{ role: "system" | "user"; content: string }> {
   // English follows its own framing (branch, CEFR level, Spanish-speaker transfer, audio…).
   if (isEnglishSubject(manifest.subject)) {
@@ -122,7 +125,7 @@ export function buildExerciseGenerationPrompt(
   }
   // Programming has its own framing (language by area, code in the statement, behaviour-based judging).
   if (domainOfSubject(manifest.subject) === "programming") {
-    return buildProgrammingExercisePrompt(manifest, theoryNotes, skill, difficulty, assistance, countToGenerate, learning);
+    return buildProgrammingExercisePrompt(manifest, theoryNotes, skill, difficulty, assistance, countToGenerate, learning, taughtBefore);
   }
   const diffName = difficultyLabel(difficulty);
   const isHelper = assistance === "helper";
@@ -370,6 +373,7 @@ export async function buildTopicSession(
       needed,
       learning,
       config.words ?? [],
+      config.taughtBefore ?? [],
     );
     try {
       const generated = await aiClient.generateExercises(messages);

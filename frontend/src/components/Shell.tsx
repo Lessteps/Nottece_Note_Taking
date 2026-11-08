@@ -1,7 +1,7 @@
 // App chrome: top bar (with unified tab strip), icon rail, status bar, toasts.
 
 import {
-  Calendar, CircleCheck, Copy, Dumbbell, Flag, Globe, House, Kanban, Minus, Moon, PanelLeft,
+  Calendar, CircleCheck, Copy, Dumbbell, Flag, Globe, House, Kanban, Minus, Moon, PanelLeft, PanelRight,
   PenLine, Pin, PinOff, Plus, Square, SquareCheck, Sun, Wallet, X, Cloud, CloudUpload,
   CircleAlert, Settings, FileCode2, FileText, LayoutDashboard, GraduationCap, Apple,
 } from "lucide-react";
@@ -256,10 +256,11 @@ export function TopBar() {
       {/* Tab strip takes the remaining space */}
       <TabStrip />
 
-      {/* Sync state + Pomodoro global + window controls on the right */}
-      <div className="flex flex-none items-center gap-2.5 border-l border-line px-3">
+      {/* Sync state + Pomodoro global + panel derecho + window controls on the right */}
+      <div className="flex flex-none items-center gap-2 border-l border-line px-2.5">
         <TopBarPomodoro />
         <SyncState />
+        <RightPanelToggle />
       </div>
       <WindowControls />
     </header>
@@ -281,8 +282,8 @@ function WorkspaceIcons() {
     // toggle sits directly above the rail and the tabs start after a clear divider.
     <button
       type="button"
-      title="Panel lateral (Ctrl+\)"
-      aria-label="Panel lateral"
+      title="Panel lateral izquierdo (Ctrl+\)"
+      aria-label="Panel lateral izquierdo"
       aria-pressed={explorerOpen}
       onClick={toggleExplorer}
       className={cn(
@@ -291,6 +292,27 @@ function WorkspaceIcons() {
       )}
     >
       <PanelLeft size={17} strokeWidth={1.8} />
+    </button>
+  );
+}
+
+function RightPanelToggle() {
+  const rightPanelOpen = useApp((s) => s.rightPanelOpen);
+  const toggleRightPanel = useApp((s) => s.toggleRightPanel);
+
+  return (
+    <button
+      type="button"
+      title="Panel derecho (plegar / desplegar)"
+      aria-label="Panel derecho"
+      aria-pressed={rightPanelOpen}
+      onClick={toggleRightPanel}
+      className={cn(
+        "grid h-7 w-7 place-items-center rounded transition-colors hover:bg-hover",
+        rightPanelOpen ? "text-text" : "text-faint hover:text-text",
+      )}
+    >
+      <PanelRight size={15} strokeWidth={1.8} />
     </button>
   );
 }

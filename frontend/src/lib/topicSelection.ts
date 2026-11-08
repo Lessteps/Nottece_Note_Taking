@@ -81,6 +81,21 @@ export function regenBlockedReason(row: AreaTopicRow, what: RegenKind, _bridge =
   return "";
 }
 
+/**
+ * ¿Le faltan ejercicios al tema? Sin ninguno, o con menos de los que pide el plan de su `.practica`. Si ni siquiera tiene `.practica`,
+ * se piden práctica + ejercicios (de la práctica salen las competencias). `null` si no falta nada o el tema no existe / está fuera del plan.
+ */
+export function exercisesGap(row: AreaTopicRow): { what: RegenKind; missing: number; title: string } | null {
+  if (!row.exists || row.route === "skipped" || !row.theory) return null;
+  const want = Math.max(1, row.planExercises ?? 1);
+  const missing = Math.max(0, want - row.exercises);
+  if (row.exercises > 0 && missing === 0) return null;
+  if (!row.manifest) return { what: "practice+exercises", missing, title: "El tema no tiene práctica ni ejercicios: generar la .practica y sus ejercicios" };
+  return row.exercises === 0
+    ? { what: "exercises", missing, title: "El tema no tiene ejercicios: generarlos a partir de su .practica" }
+    : { what: "exercises", missing, title: `Tiene ${row.exercises} de ${want} ejercicios: completar los que faltan` };
+}
+
 /** Llamadas a la IA que aproximadamente cuesta regenerar `what` en un tema (el mapa no usa IA). */
 export function estimateAiCalls(row: AreaTopicRow, what: RegenKind): number {
   const exercises = Math.max(3, row.planExercises ?? row.exercises);

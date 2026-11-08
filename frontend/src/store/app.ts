@@ -125,6 +125,7 @@ interface State {
   mode: ViewMode;
   explorerTab: ExplorerTab;
   explorerOpen: boolean;
+  rightPanelOpen: boolean;
   inspectorOpen: boolean;
   /** El esquema muscular ocupando el panel derecho. Solo tiene sentido en Ejercicio. */
   muscleOpen: boolean;
@@ -168,6 +169,7 @@ interface State {
   setMode: (m: ViewMode) => void;
   setExplorerTab: (t: ExplorerTab) => void;
   toggleExplorer: () => void;
+  toggleRightPanel: () => void;
   toggleInspector: () => void;
   setMuscleOpen: (open: boolean) => void;
   toggleTheme: () => void;
@@ -403,6 +405,7 @@ export const useApp = create<State>((setState, get) => {
   mode: "read",
   explorerTab: "files",
   explorerOpen: true,
+  rightPanelOpen: true,
   revealFolder: null,
   inspectorOpen: true,
   muscleOpen: false,
@@ -466,6 +469,7 @@ export const useApp = create<State>((setState, get) => {
     set((st) => ({ explorerTab: "files", explorerOpen: true, revealFolder: { path, n: (st.revealFolder?.n ?? 0) + 1 } }));
   },
   toggleExplorer: () => set((s) => ({ explorerOpen: !s.explorerOpen })),
+  toggleRightPanel: () => set((s) => ({ rightPanelOpen: !s.rightPanelOpen })),
   toggleInspector: () => set((s) => ({ inspectorOpen: !s.inspectorOpen })),
   setMuscleOpen: (muscleOpen) => set({ muscleOpen }),
   toggleTheme: () => {

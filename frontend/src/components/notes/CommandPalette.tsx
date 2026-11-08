@@ -160,7 +160,8 @@ function commands(): Item[] {
     { id: "mode-read", group: "Vista", label: "Modo lectura", run: () => s.setMode("read") },
     { id: "mode-edit", group: "Vista", label: "Modo edición", run: () => s.setMode("edit") },
     { id: "mode-split", group: "Vista", label: "Modo dividido (editor + vista previa)", run: () => s.setMode("split") },
-    { id: "explorer", group: "Vista", label: "Mostrar / ocultar explorador", keys: "Ctrl+\\", run: s.toggleExplorer },
+    { id: "explorer", group: "Vista", label: "Mostrar / ocultar explorador / panel izquierdo", keys: "Ctrl+\\", run: s.toggleExplorer },
+    { id: "right-panel", group: "Vista", label: "Mostrar / ocultar panel derecho", keys: "Ctrl+Alt+\\", run: s.toggleRightPanel },
     {
       id: "split-open", group: "Vista", label: "Abrir otra nota a la derecha…",
       run: () => ({

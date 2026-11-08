@@ -1,4 +1,4 @@
-import { CalendarDays, CalendarRange, ChevronDown, List, Plus, Settings2, Sun } from "lucide-react";
+import { CalendarDays, CalendarRange, ChevronDown, List, Plus, Settings2, Sun, ZoomIn, ZoomOut } from "lucide-react";
 import { useEffect } from "react";
 import { KIND_FILTERS, MONTHS_ES } from "../../lib/calendar";
 import { addDays, parseIso, weekStart } from "../../lib/habits";
@@ -8,10 +8,11 @@ import { ModuleSidebar } from "../ModuleSidebar";
 import { openMenu } from "../ui";
 import { AgendaView } from "./AgendaView";
 import { EventEditor } from "./EventEditor";
+import { IntegratedBlockModal } from "./IntegratedBlockModal";
 import { MiniMonth } from "./MiniMonth";
 import { MonthView } from "./MonthView";
 import { RoutinesDialog } from "./RoutinesDialog";
-import { TimeGrid, weekDays } from "./TimeGrid";
+import { TimeGrid, weekDays, ZOOM_CONFIG } from "./TimeGrid";
 
 function title(view: CalView, day: string): string {
   const d = parseIso(day);
@@ -41,6 +42,10 @@ export function CalendarModule() {
   const openCreate = useCalendar((s) => s.openCreate);
   const setRoutinesOpen = useCalendar((s) => s.setRoutinesOpen);
   const editorOpen = useCalendar((s) => s.editor !== null);
+  const zoom = useCalendar((s) => s.zoom);
+  const setZoom = useCalendar((s) => s.setZoom);
+  const zoomIn = useCalendar((s) => s.zoomIn);
+  const zoomOut = useCalendar((s) => s.zoomOut);
 
   useEffect(() => {
     void load();
@@ -131,6 +136,51 @@ export function CalendarModule() {
           <button type="button" aria-label="Anterior" onClick={() => step(-1)} className={navBtn}>‹</button>
           <button type="button" aria-label="Siguiente" onClick={() => step(1)} className={navBtn}>›</button>
           <h1 className="ml-2 text-[19px] text-text">{title(view, day)}</h1>
+
+          {(view === "semana" || view === "dia") && (
+            <div className="ml-auto flex items-center gap-1 rounded-xl border border-line bg-card/60 p-1">
+              <button
+                type="button"
+                title="Alejar (menos resolución)"
+                disabled={zoom === 60}
+                onClick={zoomOut}
+                className="grid h-7 w-7 place-items-center rounded-lg text-dim hover:bg-hover hover:text-text disabled:opacity-30 disabled:pointer-events-none transition-colors"
+              >
+                <ZoomOut size={15} />
+              </button>
+              <button
+                type="button"
+                title="Cambiar intervalo de tiempo"
+                onClick={(e) => {
+                  const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                  openMenu(
+                    { clientX: r.left, clientY: r.bottom + 4, preventDefault: () => undefined },
+                    [
+                      { label: "60 min (Normal)", onSelect: () => setZoom(60) },
+                      { label: "45 min", onSelect: () => setZoom(45) },
+                      { label: "30 min", onSelect: () => setZoom(30) },
+                      { label: "15 min", onSelect: () => setZoom(15) },
+                      { label: "10 min", onSelect: () => setZoom(10) },
+                      { label: "5 min (Detalle máx.)", onSelect: () => setZoom(5) },
+                    ],
+                  );
+                }}
+                className="flex items-center gap-1.5 rounded-lg px-2 py-1 font-mono text-[11.5px] text-text hover:bg-hover transition-colors"
+              >
+                <span>{ZOOM_CONFIG[zoom]?.label ?? `${zoom} min`}</span>
+                <ChevronDown size={12} className="text-faint" />
+              </button>
+              <button
+                type="button"
+                title="Acercar (mayor resolución)"
+                disabled={zoom === 5}
+                onClick={zoomIn}
+                className="grid h-7 w-7 place-items-center rounded-lg text-dim hover:bg-hover hover:text-text disabled:opacity-30 disabled:pointer-events-none transition-colors"
+              >
+                <ZoomIn size={15} />
+              </button>
+            </div>
+          )}
         </div>
         {view === "dia" ? <TimeGrid days={[day]} />
           : view === "semana" ? <TimeGrid days={weekDays(day)} />
@@ -138,6 +188,7 @@ export function CalendarModule() {
               : <AgendaView />}
       </main>
       <EventEditor />
+      <IntegratedBlockModal />
       <RoutinesDialog />
     </div>
   );

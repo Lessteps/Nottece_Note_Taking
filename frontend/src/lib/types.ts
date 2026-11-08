@@ -140,6 +140,7 @@ export interface Habit {
   colour?: string;
   notes?: string;
   area?: string;
+  exercise_schedules?: Record<string, { time?: string; duration_min?: number; in_calendar?: boolean; end_time?: string; rest_min?: number; start_date?: string | null; end_date?: string | null }>;
   schedule: string;
 }
 

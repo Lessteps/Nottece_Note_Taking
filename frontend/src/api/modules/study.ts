@@ -56,6 +56,7 @@ import {
   applyPlanToPractica,
   buildReevaluationMessages,
   buildSkillOptionsMessages,
+  fitPlanToArchetype,
   parsePracticePlan,
   parseSkillOptions,
   planCount,
@@ -63,6 +64,7 @@ import {
   setFrontmatterKey,
   type PracticePlan,
 } from "../../core/practice/practicePlan.js";
+import { routeContextOf, taughtBeforeOf } from "../../core/practice/routeContext.js";
 import { listReviews, rescheduleReview } from "../../core/practice/reviewFiles.js";
 import { listVocabReviews } from "../../core/practice/vocabReviews.js";
 import { loadReviewSettings, saveReviewSettings } from "../reviewSettings.js";
@@ -367,10 +369,13 @@ export async function reevaluateTopic(app: AppState, folder: string, opts: { cre
   const cls = classifyForTopic(app, normFolder, manifest);
   const topicType = cls.topicType;
   const catalog = catalogFor(subject);
+  const route = subject === "programming" ? routeContextOf(topicAbs, manifest.title, topicType) : null;
   const messages = buildReevaluationMessages({
     subject,
     title: manifest.title,
     topicType,
+    archetype: route?.archetype,
+    taughtBefore: route?.taughtBefore,
     branch: cls.branch,
     catalog,
     theory: readTheoryNotes(app, topicAbs),
@@ -379,10 +384,13 @@ export async function reevaluateTopic(app: AppState, folder: string, opts: { cre
   });
 
   const reply = await askStructured(cfg, messages);
-  const plan = parsePracticePlan(reply, catalog, keyOf(cls));
+  let plan = parsePracticePlan(reply, catalog, keyOf(cls));
   if (!plan) {
     const snippet = String(reply ?? "").replace(/\s+/g, " ").trim().slice(0, 160);
     throw new ApiError(`La IA no devolvió un plan de práctica válido. Respuesta: «${snippet || "vacía"}»`);
+  }
+  if (route) {
+    plan = fitPlanToArchetype(plan, route.archetype, catalog);
   }
   if (cls.domain !== "english") plan.topicType = plan.topicType ?? topicType;
 
@@ -419,10 +427,13 @@ export async function topicSkillOptions(app: AppState, folder: string) {
   const cls = classifyForTopic(app, normFolder, manifest);
   const topicType = cls.topicType;
   const catalog = catalogFor(subject);
+  const route = subject === "programming" ? routeContextOf(topicAbs, manifest.title, topicType) : null;
   const messages = buildSkillOptionsMessages({
     subject,
     title: manifest.title,
     topicType,
+    archetype: route?.archetype,
+    taughtBefore: route?.taughtBefore,
     branch: cls.branch,
     catalog,
     theory: readTheoryNotes(app, topicAbs),
@@ -1015,6 +1026,7 @@ export function studyApi(app: AppState) {
           assistance: ast,
           planCount: aiCount,
           learning: learningPromptLines(app.root, normFolder.replace(/\\/g, "/"), skill),
+          taughtBefore: taughtBeforeOf(absDir),
           ...vocabularyWords(app, found.manifest.subject, skill, found.manifest.title),
         },
         scan.exercises,

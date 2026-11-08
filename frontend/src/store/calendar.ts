@@ -10,6 +10,8 @@ import type { CalItem, CalSettings, Occurrence } from "../lib/types";
 import { useApp } from "./app";
 
 export type CalView = "dia" | "semana" | "mes" | "agenda";
+export type ZoomInterval = 60 | 45 | 30 | 15 | 10 | 5;
+export const ZOOM_LEVELS: ZoomInterval[] = [60, 45, 30, 15, 10, 5];
 
 export interface EditorState {
   mode: "create" | "edit";
@@ -18,6 +20,17 @@ export interface EditorState {
 }
 
 const FILTER_KEY = "nv.calendar.filters";
+const ZOOM_KEY = "nv.calendar.zoom";
+
+function loadZoom(): ZoomInterval {
+  try {
+    const raw = Number(localStorage.getItem(ZOOM_KEY));
+    if ([60, 45, 30, 15, 10, 5].includes(raw)) return raw as ZoomInterval;
+  } catch {
+    // fallback
+  }
+  return 60;
+}
 
 function loadFilters(): Record<string, boolean> {
   try {
@@ -50,16 +63,25 @@ interface CalState {
   days: Record<string, Occurrence[]>;
   loading: boolean;
   editor: EditorState | null;
+  integratedBlockOcc: Occurrence | null;
   routinesOpen: boolean;
+  selectedOccId: string | null;
+  zoom: ZoomInterval;
 
   setView: (v: CalView) => void;
   setDay: (d: string) => void;
+  setSelectedOccId: (id: string | null) => void;
+  setZoom: (z: ZoomInterval) => void;
+  zoomIn: () => void;
+  zoomOut: () => void;
   step: (sign: number) => void;
   setFilter: (kind: string, on: boolean) => void;
   load: () => Promise<void>;
   openCreate: (day: string, start: number | null, end: number | null, kind?: "event" | "task") => void;
   openEdit: (occ: Occurrence) => Promise<void>;
   closeEditor: () => void;
+  openIntegratedBlock: (occ: Occurrence) => void;
+  closeIntegratedBlock: () => void;
   setRoutinesOpen: (open: boolean) => void;
   setDone: (occ: Occurrence, done: boolean) => Promise<void>;
   move: (occ: Occurrence, day: string, start: string, duration: number) => Promise<void>;
@@ -79,14 +101,56 @@ export const useCalendar = create<CalState>((set, get) => ({
   days: {},
   loading: false,
   editor: null,
+  integratedBlockOcc: null,
   routinesOpen: false,
+  selectedOccId: null,
+  zoom: loadZoom(),
+
+  setSelectedOccId: (selectedOccId) => set({ selectedOccId }),
+
+  setZoom: (zoom) => {
+    try {
+      localStorage.setItem(ZOOM_KEY, String(zoom));
+    } catch {
+      // ignore
+    }
+    set({ zoom });
+  },
+
+  zoomIn: () => {
+    const current = get().zoom;
+    const idx = ZOOM_LEVELS.indexOf(current);
+    if (idx < ZOOM_LEVELS.length - 1) {
+      const next = ZOOM_LEVELS[idx + 1]!;
+      try {
+        localStorage.setItem(ZOOM_KEY, String(next));
+      } catch {
+        // ignore
+      }
+      set({ zoom: next });
+    }
+  },
+
+  zoomOut: () => {
+    const current = get().zoom;
+    const idx = ZOOM_LEVELS.indexOf(current);
+    if (idx > 0) {
+      const prev = ZOOM_LEVELS[idx - 1]!;
+      try {
+        localStorage.setItem(ZOOM_KEY, String(prev));
+      } catch {
+        // ignore
+      }
+      set({ zoom: prev });
+    }
+  },
 
   setView: (view) => {
-    set({ view, editor: null });
+    set({ view, editor: null, integratedBlockOcc: null });
     void get().load();
   },
   setDay: (day) => {
-    set({ day, editor: null });
+    set({ day, editor: null, integratedBlockOcc: null });
     void get().load();
   },
   step: (sign) => {
@@ -148,6 +212,8 @@ export const useCalendar = create<CalState>((set, get) => ({
     }
   },
   closeEditor: () => set({ editor: null }),
+  openIntegratedBlock: (occ) => set({ integratedBlockOcc: occ }),
+  closeIntegratedBlock: () => set({ integratedBlockOcc: null }),
   setRoutinesOpen: (routinesOpen) => set({ routinesOpen }),
 
   setDone: async (occ, done) => {

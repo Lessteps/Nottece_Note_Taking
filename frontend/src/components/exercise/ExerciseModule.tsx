@@ -1,4 +1,4 @@
-﻿// Ejercicio: la rutina por días, el registro diario y el catálogo.
+// Ejercicio: la rutina por días, el registro diario y el catálogo.
 //
 // La estructura imita la de Hábitos a propósito: pestañas de periodo, el panel
 // de estadísticas al pie de la barra lateral y los dashboards circulares en la
@@ -27,6 +27,8 @@ import { Overview } from "./Overview";
 import { Progress } from "./Progress";
 import { RestTimerBar } from "./RestTimerBar";
 import { SideStats } from "./parts";
+import { WorkoutTimerModal } from "./WorkoutTimerModal";
+import { WorkoutTimerBar } from "./WorkoutTimerBar";
 
 /** El reproductor del módulo: el video se ajusta a la tarjeta, sin desbordar. */
 function VideoPlayer({ ex, onBack }: { ex: Exercise; onBack: () => void }) {
@@ -166,6 +168,8 @@ const [storedView, setView] = usePersistedNav("ejercicio.view", "general");
         )}
       </main>
       <RestTimerBar />
+      <WorkoutTimerBar />
+      <WorkoutTimerModal />
     </div>
   );
 }

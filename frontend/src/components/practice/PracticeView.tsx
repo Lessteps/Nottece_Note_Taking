@@ -2,7 +2,7 @@
 // answer, hints, timer, AI grading and the attempt history.
 
 import {
-  Bug, ClipboardPaste, Eye, FileOutput, Lightbulb, Pause, Pencil, PenTool, Play, RotateCcw, Send, Timer, X,
+  Bug, ClipboardPaste, Eye, FileOutput, Lightbulb, Pause, Pencil, PenTool, Play, RotateCcw, Send, SlidersHorizontal, Timer, X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../lib/bridge";
@@ -16,6 +16,8 @@ import { cn, confirmAction } from "../ui";
 import { useStudyVersion } from "../study/StudyPanel";
 import { AudioClip } from "./AudioClip";
 import { DrillPanel } from "./DrillPanel";
+import { ConceptQuizPanel } from "./ConceptQuizPanel";
+import { ProjectStructureLab } from "./ProjectStructureLab";
 import { openInkPad, registerAnswerTarget } from "./inkBridge";
 import { beep, md, ResultCard } from "./common";
 
@@ -31,6 +33,8 @@ const PLACEHOLDERS: Record<string, string> = {
   refactor: "Escribe el código refactorizado y, debajo, qué mejoraste y por qué.",
   design: "Escribe tu diseño (tablas, tipos, restricciones o SQL) y justifica las decisiones.",
   commands: "Escribe la secuencia de comandos, uno por línea, con un comentario de por qué.",
+  project_structure: "Escribe la estructura de carpetas/archivos y los comandos de entorno en orden.",
+  pg_quiz: "Escribe tu opción (A–D) y la justificación para cada pregunta.",
   implement: "Escribe tu código. Pruébalo con «Depurar código» (panel de la derecha); al entregarlo, el profesor lo lee y razona sobre él.",
   writing: "Write your text here.",
   rewrite: "Rewrite each sentence correctly, one per line.",
@@ -54,6 +58,7 @@ export function PracticeView({ note }: { note: OpenNote }) {
   const [status, setStatus] = useState<{ text: string; error?: boolean } | null>(null);
   const [timer, setTimer] = useState<TimerState>(initialTimer);
   const [running, setRunning] = useState(false);
+  const [interactiveMode, setInteractiveMode] = useState(true);
   const secondsOverride = useRef<number | null>(null);
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rel = note.path;
@@ -370,49 +375,84 @@ export function PracticeView({ note }: { note: OpenNote }) {
             seconds={() => timer.workElapsed}
             onFinish={finish}
           />
-        ) : (
-          <section className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <h2 className="font-mono text-[10.5px] uppercase tracking-wider text-faint">Tu respuesta</h2>
-              {canRun && (
-                <button
-                  type="button"
-                  onClick={debugCode}
-                  title="Abre el depurador en el panel derecho con el código de este ejercicio: ejecútalo y recórrelo línea a línea"
-                  className="flex items-center gap-1 rounded-lg border border-line bg-card px-2.5 py-1 text-[11.5px] font-semibold text-dim transition-colors hover:border-accent hover:text-ink"
-                >
-                  <Bug size={12} /> Depurar código
-                </button>
-              )}
-              {(ex.subject === "mathematics" || ["prove", "solve", "process", "counterexample", "true_false", "find_error", "drill", "explain"].includes(ex.mode.id)) && !graded && (
-                <button
-                  type="button"
-                  onClick={() => void openInkPad()}
-                  title="Abre un lienzo infinito en una vista dividida para escribir a mano"
-                  className="flex items-center gap-1 rounded-lg border border-line bg-card px-2.5 py-1 text-[11.5px] font-semibold text-dim transition-colors hover:border-accent hover:text-ink"
-                >
-                  <PenTool size={12} /> Dibujar (LaTeX)
-                </button>
-              )}
-            </div>
+        ) : (() => {
+          const isQuiz = ex.mode.id === "pg_quiz" || ex.mode.id === "pg_true_false";
+          const isProjectLab = ex.mode.id === "project_structure" || ex.mode.id === "commands";
+          const hasInteractiveView = isQuiz || isProjectLab;
 
-            <textarea
-              aria-label="Tu respuesta"
-              value={answer}
-              readOnly={graded || !!pending}
-              onChange={(e) => onAnswer(e.target.value)}
-              placeholder={PLACEHOLDERS[ex.mode.id] ?? "Escribe tu respuesta."}
-              spellCheck={!code}
-              className={cn(
-                "min-h-[220px] resize-y rounded-xl border border-line bg-panel p-4 text-[14px] leading-relaxed text-text outline-none placeholder:text-faint focus:border-accent",
-                code && "font-mono text-[13px]",
+          return (
+            <section className="flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <h2 className="font-mono text-[10.5px] uppercase tracking-wider text-faint">Tu respuesta</h2>
+                <div className="flex items-center gap-1.5">
+                  {hasInteractiveView && (
+                    <button
+                      type="button"
+                      onClick={() => setInteractiveMode(!interactiveMode)}
+                      title={interactiveMode ? "Cambiar a editor de texto libre" : "Cambiar a vista interactiva guiada"}
+                      className="flex items-center gap-1 rounded-lg border border-line bg-card px-2.5 py-1 text-[11.5px] font-semibold text-dim transition-colors hover:border-accent hover:text-ink"
+                    >
+                      <SlidersHorizontal size={12} /> {interactiveMode ? "Ver texto directo" : "Modo interactivo"}
+                    </button>
+                  )}
+                  {canRun && (
+                    <button
+                      type="button"
+                      onClick={debugCode}
+                      title="Abre el depurador en el panel derecho con el código de este ejercicio: ejecútalo y recórrelo línea a línea"
+                      className="flex items-center gap-1 rounded-lg border border-line bg-card px-2.5 py-1 text-[11.5px] font-semibold text-dim transition-colors hover:border-accent hover:text-ink"
+                    >
+                      <Bug size={12} /> Depurar código
+                    </button>
+                  )}
+                  {(ex.subject === "mathematics" || ["prove", "solve", "process", "counterexample", "true_false", "find_error", "drill", "explain"].includes(ex.mode.id)) && !graded && (
+                    <button
+                      type="button"
+                      onClick={() => void openInkPad()}
+                      title="Abre un lienzo infinito en una vista dividida para escribir a mano"
+                      className="flex items-center gap-1 rounded-lg border border-line bg-card px-2.5 py-1 text-[11.5px] font-semibold text-dim transition-colors hover:border-accent hover:text-ink"
+                    >
+                      <PenTool size={12} /> Dibujar (LaTeX)
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {hasInteractiveView && interactiveMode ? (
+                isQuiz ? (
+                  <ConceptQuizPanel
+                    statement={ex.statement}
+                    mode={ex.mode.id}
+                    value={answer}
+                    disabled={graded || !!pending}
+                    onChange={onAnswer}
+                  />
+                ) : (
+                  <ProjectStructureLab
+                    value={answer}
+                    disabled={graded || !!pending}
+                    onChange={onAnswer}
+                  />
+                )
+              ) : (
+                <textarea
+                  aria-label="Tu respuesta"
+                  value={answer}
+                  readOnly={graded || !!pending}
+                  onChange={(e) => onAnswer(e.target.value)}
+                  placeholder={PLACEHOLDERS[ex.mode.id] ?? "Escribe tu respuesta."}
+                  spellCheck={!code}
+                  className={cn(
+                    "min-h-[220px] resize-y rounded-xl border border-line bg-panel p-4 text-[14px] leading-relaxed text-text outline-none placeholder:text-faint focus:border-accent",
+                    code && "font-mono text-[13px]",
+                  )}
+                />
               )}
-            />
-            {renderedHints && (
-              <div className="nv-prose rounded-xl border border-warn/40 bg-warn-soft px-4 py-3 text-[14px]"
-                dangerouslySetInnerHTML={renderedHints} />
-            )}
-            <div className="flex flex-wrap items-center gap-2">
+              {renderedHints && (
+                <div className="nv-prose rounded-xl border border-warn/40 bg-warn-soft px-4 py-3 text-[14px]"
+                  dangerouslySetInnerHTML={renderedHints} />
+              )}
+              <div className="flex flex-wrap items-center gap-2">
               {!pending && !graded && (
                 <button type="button" disabled={busy} onClick={() => void submit()}
                   className="flex items-center gap-1.5 rounded-lg bg-accent px-3.5 py-2 text-[13px] font-semibold text-white hover:bg-accent-strong disabled:opacity-50">
@@ -451,7 +491,8 @@ export function PracticeView({ note }: { note: OpenNote }) {
               )}
             </div>
           </section>
-        )}
+        );
+      })()}
 
         {status && (
           <p role="status" className={cn("text-[12.5px] leading-relaxed", status.error ? "text-danger" : "text-dim")}>{status.text}</p>

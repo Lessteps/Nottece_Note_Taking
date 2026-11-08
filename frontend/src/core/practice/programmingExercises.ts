@@ -5,6 +5,7 @@
  */
 
 import { disciplineFor, programmingDisciplineOfPath } from "./disciplineCatalog.js";
+import { archetypeOf, archetypePromptBlock } from "./programmingArchetype.js";
 import { MODES } from "./modes.js";
 import type { AssistanceLevel, DifficultyLevel } from "./skills.js";
 import type { TopicManifest } from "./topic.js";
@@ -47,6 +48,8 @@ const SHAPE_OF_MODE: Record<string, string> = {
   pp_kata: "Give one self-contained logic problem built on a pattern (arrays and strings, hashing, recursion, sorting and searching, two pointers, stacks and queues, trees and graphs, dynamic programming) with a precise statement, a table of inputs and expected outputs including edge cases. The solution is a reference solution, the pattern it uses and its complexity. No trick questions and no memorised-puzzle names.",
   pg_true_false: "Give 4 to 6 short statements about the concept, about half of them false in a subtle way (a plausible misconception, a swapped cause, an absolute word such as 'always' or 'never'). The learner marks each true or false and justifies it. The solution lists every verdict, the reason, and the corrected statement for each false one. No code has to be written.",
   pg_classify: "Give 5 to 8 concrete cases (a snippet to read, a log line, a requirement) and the categories of the topic, including borderline cases. The learner places each case and names the deciding criterion. The solution gives the category and the criterion for each case.",
+  pg_quiz: "Give 4 to 6 numbered multiple-choice questions. Layout (the app renders it as clickable cards, keep it exact): `1. <question or short real scenario>` on one line, then `A) ...`, `B) ...`, `C) ...`, `D) ...` on their own lines, exactly one correct option each. Distractors are real misconceptions about this topic. The solution lists `1. <letter> — <reason>` for every question and names the misconception behind each distractor.",
+  project_structure: "Describe a small realistic project and its constraints (OS, tool, what must run). The learner writes (a) the file/folder tree, one path per line, folders ending in `/` (e.g. `pyproject.toml`, `.venv/`, `src/app/__init__.py`, `tests/test_app.py`), (b) the setup commands in order, one per line, and (c) when relevant the import line that works from a given file. Variants: repair a broken tree, list what must not be committed, place a new module. The solution gives the reference tree, the commands and why each piece is where it is. Never ask to trace, debug or refactor a program.",
   pg_compare: "Name two or three easily confused concepts of this topic and give two small real situations. The learner states what is the same, what differs and which concept fits each situation and why. The solution gives the decisive difference and the assignment of each situation.",
 };
 
@@ -77,6 +80,8 @@ export function buildProgrammingExercisePrompt(
   assistance: AssistanceLevel,
   count: number,
   learning: readonly string[] = [],
+  /** titles of the topics taught before this one in the route (same area, in order): the AI must not go beyond them */
+  taughtBefore: readonly string[] = [],
 ): Array<{ role: "system" | "user"; content: string }> {
   const disciplineId = programmingDisciplineOfPath(manifest.folder ?? "");
   const discipline = disciplineFor({ subject: "programming", discipline: disciplineId, mode: skill });
@@ -88,7 +93,8 @@ export function buildProgrammingExercisePrompt(
     .slice(0, 5)
     .map((t) => `### ${t.title}\n${taughtContent(t.content)}`)
     .join("\n\n");
-  const conceptTopic = manifest.topic_type === "theoretical";
+  const archetype = archetypeOf({ title: manifest.title, topicType: manifest.topic_type, taughtBefore });
+  const conceptTopic = manifest.topic_type === "theoretical" || archetype === "concept" || archetype === "setup";
   const anchors = discipline.skills.map((s) => `- ${s.title}: ${s.anchors.join("; ")}`).join("\n");
 
   const system = [
@@ -98,7 +104,8 @@ export function buildProgrammingExercisePrompt(
     `Discipline framing: ${discipline.framing}`,
     mode ? `What this skill asks of the learner: ${mode.act}` : "",
     `Shape of the exercise: ${(conceptTopic ? CONCEPT_SHAPE_OF_MODE[skill] : undefined) ?? SHAPE_OF_MODE[skill] ?? "A concrete task that trains exactly this skill."}`,
-    conceptTopic ? "This topic is a CONCEPT, not a procedure: never ask the learner to write code or commands. Situations may quote a short snippet, a log excerpt or a request/response to READ and reason about." : "",
+    archetype === "concept" || manifest.topic_type === "theoretical" ? "This topic is a CONCEPT, not a procedure: never ask the learner to write code or commands. Situations may quote a short snippet, a log excerpt or a request/response to READ and reason about." : "",
+    archetypePromptBlock(archetype, taughtBefore),
     "CRITICAL RULES:",
     "1. Every exercise is about the specific concepts of THIS topic, never generic filler; the topic's central mechanism must be what is being tested.",
     "1b. TAUGHT-ONLY: the learner has read ONLY the theory notes given below (and the topics they require). Use only the terms, functions, syntax and ideas those notes explain. If a word or feature is not in the notes, do not use it in the statement, the hints or the code, and never ask about it. A true/false item, a classification case or a trace must be answerable from what the note says. At level 1 reuse the situations of the note's own examples with different values.",

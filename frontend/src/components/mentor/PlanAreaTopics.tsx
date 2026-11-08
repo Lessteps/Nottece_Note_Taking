@@ -10,10 +10,10 @@
 // Los datos salen del plan (áreas, grupos, semanas) y de `mentor_plan_topic_catalog` (lo que existe en la vault); la lógica está en
 // `lib/planAreaTopics.ts`. Solo lectura salvo «Generar», que pasa siempre por el diálogo de confirmación de «Ejecutar plan».
 
-import { Check, ChevronDown, ChevronRight, Edit3, Plus, RefreshCw, Sparkles, Trash2, X } from "lucide-react";
-import { Fragment, useEffect, useId, useMemo, useState } from "react";
+import { Check, ChevronDown, ChevronLeft, ChevronRight, Edit3, Plus, RefreshCw, Sparkles, Trash2, X } from "lucide-react";
+import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { api } from "../../lib/bridge";
-import { matchesStatus, planBulk, regenBlockedReason, STATUS_FILTERS, type BulkPlan, type RegenKind, type StatusFilter } from "../../lib/topicSelection";
+import { exercisesGap, matchesStatus, planBulk, regenBlockedReason, STATUS_FILTERS, type BulkPlan, type RegenKind, type StatusFilter } from "../../lib/topicSelection";
 import { useApp } from "../../store/app";
 import { useMentor } from "../../store/mentor";
 import { useNavState } from "../../store/navState";
@@ -41,11 +41,96 @@ import { MethodologyCheckButton } from "./MethodologyCheck";
 import { PlanReviewScreen } from "./PlanReviewScreen";
 import type { PlanReview } from "../../lib/types";
 
-/** Una sub-barra de pestañas (botones con `aria-pressed`) que se desplaza en horizontal en anchos estrechos. */
-function TabBar<T extends { key: string; label: string; hint?: string; hintLabel?: string }>({ label, tabs, active, onSelect, level, testid }: { label: string; tabs: ReadonlyArray<T>; active: string; onSelect: (key: string) => void; level: 1 | 2; testid: string }) {
+/** Una sub-barra de pestañas (botones con `aria-pressed`) con scroll horizontal, soporte de rueda de ratón y flechas de navegación si desborda. */
+function TabBar<T extends { key: string; label: string; hint?: string; hintLabel?: string }>({
+  label,
+  tabs,
+  active,
+  onSelect,
+  level,
+  testid,
+}: {
+  label: string;
+  tabs: ReadonlyArray<T>;
+  active: string;
+  onSelect: (key: string) => void;
+  level: 1 | 2;
+  testid: string;
+}) {
+  const listRef = useRef<HTMLUListElement | null>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const checkScroll = useCallback(() => {
+    const el = listRef.current;
+    if (!el) return;
+    const { scrollLeft, scrollWidth, clientWidth } = el;
+    setCanScrollLeft(scrollLeft > 2);
+    setCanScrollRight(scrollLeft + clientWidth < scrollWidth - 2);
+  }, []);
+
+  useEffect(() => {
+    checkScroll();
+    const el = listRef.current;
+    if (!el) return;
+    if (typeof ResizeObserver !== "undefined") {
+      const obs = new ResizeObserver(() => checkScroll());
+      obs.observe(el);
+      return () => obs.disconnect();
+    }
+  }, [checkScroll, tabs]);
+
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el || !active) return;
+    const btn = el.querySelector<HTMLElement>(`[data-testid="${testid}-${active || "all"}"]`);
+    if (btn) {
+      const containerRect = el.getBoundingClientRect();
+      const btnRect = btn.getBoundingClientRect();
+      if (btnRect.left < containerRect.left) {
+        el.scrollLeft -= containerRect.left - btnRect.left + 24;
+      } else if (btnRect.right > containerRect.right) {
+        el.scrollLeft += btnRect.right - containerRect.right + 24;
+      }
+    }
+    checkScroll();
+  }, [active, testid, checkScroll]);
+
+  const scrollByDelta = (delta: number) => {
+    const el = listRef.current;
+    if (!el) return;
+    // el paso sigue al ancho visible: en una ventana estrecha avanza un «tramo» útil, no 200 px fijos
+    const step = Math.max(160, Math.round(el.clientWidth * 0.6));
+    el.scrollBy({ left: Math.sign(delta) * step, behavior: "smooth" });
+  };
+
   return (
-    <nav aria-label={label} data-testid={testid} className="min-w-0">
-      <ul className={cn("flex gap-1 overflow-x-auto py-1", level === 1 ? "border-b border-line" : "")}>
+    <nav aria-label={label} data-testid={testid} className="group/tabbar relative min-w-0 max-w-full flex-1">
+      {canScrollLeft && (
+        <button
+          type="button"
+          aria-label="Desplazar pestañas hacia la izquierda"
+          onClick={() => scrollByDelta(-200)}
+          className="absolute left-0 top-1/2 z-10 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full border border-line bg-surface/95 text-text shadow-md backdrop-blur hover:bg-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+        >
+          <ChevronLeft size={14} aria-hidden />
+        </button>
+      )}
+      <ul
+        ref={listRef}
+        onScroll={checkScroll}
+        onWheel={(e) => {
+          const el = listRef.current;
+          if (!el || el.scrollWidth <= el.clientWidth) return;
+          if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+          el.scrollLeft += e.deltaY;
+          checkScroll();
+        }}
+        className={cn(
+          "flex gap-1 overflow-x-auto py-1 scroll-smooth [scrollbar-width:thin] [scrollbar-color:var(--nv-line-strong)_transparent]",
+          level === 1 ? "border-b border-line" : "",
+        )}
+      >
         {tabs.map((t) => {
           const on = t.key === active;
           return (
@@ -74,6 +159,16 @@ function TabBar<T extends { key: string; label: string; hint?: string; hintLabel
           );
         })}
       </ul>
+      {canScrollRight && (
+        <button
+          type="button"
+          aria-label="Desplazar pestañas hacia la derecha"
+          onClick={() => scrollByDelta(200)}
+          className="absolute right-0 top-1/2 z-10 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full border border-line bg-surface/95 text-text shadow-md backdrop-blur hover:bg-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+        >
+          <ChevronRight size={14} aria-hidden />
+        </button>
+      )}
     </nav>
   );
 }
@@ -116,9 +211,26 @@ const OUTDATED_KINDS = [
 /** Botones verdes junto al tema: la skill cambió después de generar esa pieza. Pulsar pide confirmar y regenera (con copia de seguridad). */
 function OutdatedButtons({ row, busy, onAsk }: { row: AreaTopicRow; busy: boolean; onAsk: (what: RegenKind, row: AreaTopicRow) => void }) {
   const list = OUTDATED_KINDS.filter((k) => row.outdated?.[k.key]);
-  if (list.length === 0) return null;
+  const ex = exercisesGap(row);
+  if (list.length === 0 && !ex) return null;
   return (
     <span className="mt-1 flex flex-wrap gap-1" data-testid="outdated-buttons">
+      {ex && (() => {
+        const why = busy ? "Hay una regeneración en curso." : regenBlockedReason(row, ex.what);
+        return (
+          <button
+            type="button"
+            disabled={!!why}
+            onClick={() => onAsk(ex.what, row)}
+            title={why || ex.title}
+            aria-label={`Generar los ejercicios de ${row.title}: ${ex.title}`}
+            data-testid="outdated-exercises"
+            className="inline-flex min-h-7 items-center gap-1 rounded-md border border-mint bg-mint/15 px-2 text-[12.5px] font-medium text-mint hover:bg-mint/25 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Plus size={12} aria-hidden /> Ejercicios{ex.missing > 0 && row.exercises > 0 ? ` (+${ex.missing})` : ""}
+          </button>
+        );
+      })()}
       {list.map((k) => {
         const why = busy ? "Hay una regeneración en curso." : regenBlockedReason(row, k.what);
         return (
@@ -464,7 +576,7 @@ export function PlanAreaTopics({ plan, schedule, today, started, progress, only 
   };
 
   return (
-    <section aria-labelledby={`${uid}-h`} data-testid="plan-areas-view" className="space-y-3">
+    <section aria-labelledby={`${uid}-h`} data-testid="plan-areas-view" className="space-y-3 min-w-0 max-w-full">
       <SectionHeading id={`${uid}-h`} hint="Cada área del plan con todos sus temas en el orden de la ruta y lo que existe de cada uno. Elige un área arriba y, dentro de ella, un grupo.">
         {only ? `Temas de ${tabs.find((t) => t.key === only || t.subplanId === only)?.area ?? "el área"}` : "Temas por área"}
       </SectionHeading>
@@ -476,7 +588,7 @@ export function PlanAreaTopics({ plan, schedule, today, started, progress, only 
       {catalog && active && group && (
         <>
           {!only && (
-            <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex min-w-0 max-w-full items-center justify-between gap-2">
               <TabBar label="Áreas del plan" tabs={areaTabsView(tabs)} active={active.key} onSelect={pickArea} level={1} testid="area-tabs" />
             </div>
           )}
@@ -520,15 +632,18 @@ export function PlanAreaTopics({ plan, schedule, today, started, progress, only 
           </div>
 
           {sub && (
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-2" data-testid="groups-bar">
-              <div className="flex flex-wrap items-center gap-2">
-                {groups.length > 0 && (
+            <div className="flex min-w-0 max-w-full flex-wrap items-center justify-between gap-2 border-b border-line pb-2" data-testid="groups-bar">
+              {/* las pestañas van en su propia fila a todo el ancho: en una ventana estrecha los botones de al lado ya no las aplastan */}
+              {groups.length > 0 && (
+                <div className="w-full min-w-0 max-w-full" data-testid="group-tabs-row">
                   <TabBar label={`Asignaturas de ${active.area}`} tabs={groupTabsView(groups, reviews)} active={group.id} onSelect={pickGroup} level={2} testid="group-tabs" />
-                )}
+                </div>
+              )}
+              <div className="flex min-w-0 max-w-full flex-1 items-center gap-2">
                 <button
                   type="button"
                   onClick={handleCreateGroup}
-                  className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-dashed border-line px-2.5 text-[13px] text-dim hover:border-accent hover:bg-hover hover:text-text"
+                  className="inline-flex min-h-9 flex-none items-center gap-1 whitespace-nowrap rounded-lg border border-dashed border-line px-2.5 text-[13px] text-dim hover:border-accent hover:bg-hover hover:text-text"
                   title="Añadir una nueva asignatura dentro de esta área"
                   data-testid="create-group-btn"
                 >
@@ -536,7 +651,7 @@ export function PlanAreaTopics({ plan, schedule, today, started, progress, only 
                 </button>
               </div>
               {group.id && group.id !== "bases" && group.id !== "core" && group.id !== "__otros" && (
-                <div className="flex items-center gap-1 text-[12px] text-dim">
+                <div className="flex flex-none items-center gap-1 text-[12px] text-dim">
                   <button
                     type="button"
                     onClick={handleRenameGroup}

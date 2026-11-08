@@ -105,4 +105,10 @@ describe("ScheduleManager", () => {
     const res = sm.range(first, last);
     expect(Object.keys(res).length).toBe(30);
   });
+
+  it("does not throw ReferenceError when querying day with habits on rest days (0 exercises)", () => {
+    const saturday = new Date(2026, 10, 7); // 2026-11-07
+    sm.habitMgr.add_habit("Hábito sábado", "⭐", [6], { in_calendar: true });
+    expect(() => sm.day(saturday)).not.toThrow();
+  });
 });

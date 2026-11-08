@@ -44,6 +44,7 @@ export const fromMinutes = (m: number): string => `${String(Math.floor(m / 60) %
 
 export interface DayBlockIn {
   key: string;
+  areaId?: string;
   /** minutos que pesan los temas y la práctica de ese día */
   minutes: number;
 }
@@ -68,19 +69,25 @@ export function placeBlocks(blocks: readonly DayBlockIn[], times: AreaTimes): Da
   const out: DayBlockOut[] = [];
   const busy: Array<[number, number]> = [];
   for (const b of blocks) {
-    const t = times[b.key];
+    const t = times[b.key] ?? (b.areaId ? times[b.areaId] : undefined);
     if (!t) continue;
     const dur = Math.max(MIN_BLOCK, t.durationMin ?? b.minutes);
     const start = toMinutes(t.start);
     busy.push([start, start + dur]);
     out.push({ key: b.key, start: t.start, durationMin: dur, fixed: true });
   }
-  let cursor = DEFAULT_DAY_START;
+
+  // Si algún bloque temprano (ej. Backend a las 06:30) tiene hora fija anterior a las 09:00,
+  // el cursor se adapta para apilar el resto de áreas inmediatamente a continuación.
+  const minFixedStart = busy.length ? Math.min(...busy.map(([a]) => a)) : DEFAULT_DAY_START;
+  let cursor = Math.min(DEFAULT_DAY_START, minFixedStart);
+
   const result: DayBlockOut[] = [];
   for (const b of blocks) {
     const fixed = out.find((o) => o.key === b.key);
     if (fixed) {
       result.push(fixed);
+      cursor = Math.max(cursor, toMinutes(fixed.start) + fixed.durationMin + BLOCK_GAP);
       continue;
     }
     const dur = Math.max(MIN_BLOCK, b.minutes);

@@ -107,6 +107,24 @@ export const PROGRAMMING_EXTRA_SKILLS: readonly ProgrammingSkillSpec[] = [
     answerKind: "text",
     timer: "10m",
   },
+  {
+    id: "pg_quiz",
+    label: "Opción múltiple (concepto)",
+    description: "Elegir la opción correcta (A–D) en preguntas y escenarios sobre el concepto y justificar la elección.",
+    act: "Give 4 to 6 numbered multiple-choice questions about the topic. Use EXACTLY this layout so the app can render clickable options: a line `1. <question or short scenario>` followed by option lines `A) …`, `B) …`, `C) …`, `D) …` (one per line, exactly one correct). Distractors must be real misconceptions about THIS topic, not absurd options. Mix definition questions with small real situations (\"you clone a repo and…\"). No code has to be written; a question may quote one or two lines. The learner picks one letter per question and justifies it in one sentence.",
+    judge: "Every chosen option is the correct one AND its justification names the actual reason (the rule or mechanism). A right letter with an empty or wrong reason counts half. For each wrong choice, name the misconception behind it.",
+    answerKind: "text",
+    timer: "5m",
+  },
+  {
+    id: "project_structure",
+    label: "Estructura de proyecto y entorno",
+    description: "Recrear o reparar la estructura real de un proyecto (carpetas, configuración, entorno virtual) y los comandos para montarlo.",
+    act: "Describe a small realistic project (a CLI script, a tiny API, a package with tests) and ask the learner to BUILD its layout: the folder/file tree (one path per line, folders end with `/`, e.g. `pyproject.toml`, `.venv/`, `src/app/__init__.py`, `src/app/main.py`, `tests/test_main.py`), the setup commands in order (create and activate the environment, install, run) and, when relevant, the import line that works from a given file. Variants: repair a broken tree, say which files must NOT be committed, or decide where a new module goes. Never ask to trace, debug or refactor a program.",
+    judge: "The tree has every required piece in the right place (package folders with `__init__.py` when needed, config at the root, tests apart, the environment folder excluded from version control), the commands are correct and in a working order for the stated OS, and the imports resolve from where the code runs. Extra noise files or a wrong root lose points.",
+    answerKind: "text",
+    timer: "10m",
+  },
   // The daily logic exercise of the `programming_practice` area (a track apart from the weekly projects).
   {
     id: "pp_kata",

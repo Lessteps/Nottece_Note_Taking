@@ -23,6 +23,7 @@ export const KIND_FILTERS: Array<[string, string, string]> = [
   ["routine", "Rutinas", "#2dd4bf"], ["event", "Eventos", "#ff9632"], ["habit", "Hábitos", "#7c5af0"],
   ["exercise", "Ejercicio", "#ff9632"], ["task", "Tareas", "#2383e2"], ["project", "Proyectos", "#a78bfa"],
   ["issue", "Issues de proyectos", "#a78bfa"], ["goal_item", "Metas", "#33b679"], ["saving", "Ahorros", "#eab308"],
+  ["integrated_block", "Bloques integrados", "#6366f1"],
   ["mentor_study", "Estudio (Mentor)", "#38bdf8"],
 ];
 
@@ -64,7 +65,8 @@ export function layoutDay(occs: Occurrence[]): Placed[] {
     .filter((o) => o.start)
     .map((o) => {
       const start = toMin(o.start)!;
-      return { occ: o, start, end: Math.min(24 * 60, start + Math.max(15, o.duration_min ?? 60)), col: 0, cols: 1 };
+      const dur = typeof o.duration_min === "number" && o.duration_min > 0 ? o.duration_min : 30;
+      return { occ: o, start, end: Math.min(24 * 60, start + Math.max(5, dur)), col: 0, cols: 1 };
     })
     .sort((a, b) => a.start - b.start || b.end - a.end);
   const out: Placed[] = [];

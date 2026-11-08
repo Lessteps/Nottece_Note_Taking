@@ -200,6 +200,6 @@ Contenido de prueba.
     const occs = calSource.occurrences(new Date("2026-10-06"), new Date("2026-10-12"));
     expect(Object.keys(occs).length).toBeGreaterThan(0);
     const firstDayOccs = Object.values(occs)[0]!;
-    expect(firstDayOccs.some((o) => o.kind === "mentor_study")).toBe(true);
+    expect(firstDayOccs.some((o) => o.kind === "integrated_block" || o.kind === "mentor_study")).toBe(true);
   });
 });

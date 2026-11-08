@@ -68,4 +68,23 @@ describe("MentorCalendarSource con horario por área", () => {
     expect(be.length).toBeGreaterThan(0);
     expect(be.every((o) => o.start === "19:00" && o.duration_min === 60)).toBe(true);
   });
+
+  it("proyecta los temas de Backend según la sesión real de Full Stack Junior", () => {
+    const src = new MentorCalendarSource("/home/drawn/projects/Lessteps/knowledge-base");
+    const occs = src.occurrences(new Date("2026-11-08T00:00:00"), new Date("2026-11-08T23:59:59"));
+    const dayOccs = occs["2026-11-08"];
+    expect(dayOccs).toBeDefined();
+    expect(dayOccs!.length).toBeGreaterThan(0);
+    const backendOcc = dayOccs!.find((o) => o.id.includes("backend"));
+    expect(backendOcc).toBeDefined();
+    expect(backendOcc!.start).toBe("06:30");
+    const blockLink = backendOcc!.links?.find((l) => l.type === "integrated_block") as any;
+    expect(blockLink).toBeDefined();
+    expect(blockLink.topics).toBeDefined();
+    expect(blockLink.topics.length).toBe(3);
+    const titles = blockLink.topics.map((t: any) => t.title);
+    expect(titles).toContain("2.1.1 Project structure, virtual environments and imports");
+    expect(titles).toContain("4.1 What the backend is");
+    expect(titles).toContain("4.1.1 The client-server model and the trust boundary");
+  });
 });

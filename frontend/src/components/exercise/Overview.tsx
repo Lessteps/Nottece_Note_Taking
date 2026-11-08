@@ -1,4 +1,4 @@
-﻿// Vista general premium: héroe con la fecha, tira compacta de stats y la
+// Vista general premium: héroe con la fecha, tira compacta de stats y la
 // sesión como protagonista.
 //
 // La pantalla se lee de arriba abajo en el orden en que se usa: primero el
@@ -15,7 +15,7 @@
 // Esto es solo composición y relieve.
 
 import { useEffect, useMemo, useState } from "react";
-import { Map as MapIcon, Dumbbell } from "lucide-react";
+import { Map as MapIcon, Dumbbell, Timer } from "lucide-react";
 import { api } from "../../lib/bridge";
 import { addDays } from "../../lib/habits";
 import { NavButtons } from "../habits/parts";
@@ -24,6 +24,7 @@ import { weekdayKeyOf } from "../../lib/exercise";
 import { Header } from "../habits/parts";
 import { GhostButton } from "../common/forms";
 import { useExercise } from "../../store/exercise";
+import { useWorkoutTimer } from "../../store/workoutTimer";
 import type { Exercise, ExerciseDay } from "../../lib/types";
 import { ExerciseRow } from "./ExerciseRow";
 import { MuscleMap } from "./MuscleMap";
@@ -75,6 +76,9 @@ export function Overview({
     <>
       <Header title="Vista general">
         <span className="text-[11.5px] text-faint">Ejercicio</span>
+        <GhostButton onClick={() => useWorkoutTimer.getState().openTimer(day?.exercises?.[0], date)}>
+          <Timer size={13} className="text-amber-400" /> Temporizador
+        </GhostButton>
         <GhostButton data-go-program-view onClick={onGoProgram}>
           <Dumbbell size={13} /> Tu programa
         </GhostButton>

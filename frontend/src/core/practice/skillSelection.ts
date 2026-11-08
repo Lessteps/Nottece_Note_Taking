@@ -61,6 +61,8 @@ export const SKILL_FIT: Record<string, SkillCompetencies> = {
   pg_true_false: { competencies: ["Discernir ideas correctas de incorrectas", "Justificar con el mecanismo"], topicTypes: ["theoretical", "mixed"] },
   pg_classify: { competencies: ["Ubicar casos en su categoría", "Criterio que decide"], topicTypes: ["theoretical", "mixed"] },
   pg_compare: { competencies: ["Distinguir conceptos parecidos", "Elegir según la situación"], topicTypes: ["theoretical", "mixed"] },
+  pg_quiz: { competencies: ["Reconocer la idea correcta", "Descartar conceptos erróneos"], topicTypes: ["theoretical", "mixed"] },
+  project_structure: { competencies: ["Estructura de carpetas y configuración", "Entorno y comandos en orden"], topicTypes: ["procedural", "mixed"] },
   // ── english ─────────────────────────────────────────────────────────────
   writing: { competencies: ["Producción propia", "Cohesión y registro"], topicTypes: ["procedural", "mixed"] },
   rewrite: { competencies: ["Corrección del error", "Estructura objetivo"], topicTypes: ["procedural", "mixed"] },

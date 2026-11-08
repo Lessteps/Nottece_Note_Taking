@@ -457,6 +457,36 @@ export class ScheduleManager {
 
     // 1. Routines
     const overrides = dayData.overrides || {};
+
+    // Routines from previous day that spill over midnight into today
+    const prevD = addDays(d, -1);
+    for (const r of routinesList) {
+      if (!routineOn(r, prevD)) continue;
+      const rStart = r.start ? String(r.start).split(":") : null;
+      if (!rStart || rStart.length < 2) continue;
+      const sMin = Number(rStart[0]) * 60 + Number(rStart[1]);
+      const totalDur = r.duration_min ?? 60;
+      if (sMin + totalDur > 1440) {
+        const spill = sMin + totalDur - 1440;
+        out.push(
+          new Occurrence({
+            id: `${r.id}_spill`,
+            title: r.title || "Rutina",
+            kind: "routine",
+            date: new Date(d),
+            start: "00:00",
+            duration_min: Math.min(1440, spill),
+            colour: r.colour || "blue",
+            links: r.links || [],
+            done: false,
+            source: "routine",
+            editable: true,
+            reminder_min: null,
+          }),
+        );
+      }
+    }
+
     for (const r of routinesList) {
       if (!routineOn(r, d)) continue;
 
@@ -487,6 +517,16 @@ export class ScheduleManager {
         startT = r.start;
         dur = r.duration_min;
         isDone = false;
+      }
+
+      if (startT && dur) {
+        const parts = String(startT).split(":");
+        if (parts.length >= 2) {
+          const sMin = Number(parts[0]) * 60 + Number(parts[1]);
+          if (sMin + dur > 1440) {
+            dur = 1440 - sMin;
+          }
+        }
       }
 
       out.push(
@@ -593,7 +633,11 @@ export class ScheduleManager {
     }
 
     // 5. Exercises
-    if (this.exerciseMgr.exercises_for_day(wkey).length > 0) {
+    const gymHabit = this.habitMgr.habits().find((h) => h.id === "gym");
+    const schedules = (gymHabit?.exercise_schedules as Record<string, { time?: string; duration_min?: number; in_calendar?: boolean; rest_min?: number }> | undefined) || {};
+
+    const dayExercises = this.exerciseMgr.exercises_for_day(wkey);
+    if (dayExercises.length > 0) {
       const isDone = this.exerciseMgr.day_pct(d) >= 1.0;
       out.push(
         new Occurrence({
@@ -610,6 +654,31 @@ export class ScheduleManager {
           editable: false,
         }),
       );
+
+      const exLog = this.exerciseMgr.getLog(d);
+
+      for (const ex of dayExercises) {
+        const sched = schedules[ex.id];
+        if (sched && sched.time && sched.in_calendar !== false) {
+          const isExDone = Boolean(exLog?.entries?.[ex.id]?.done);
+          const restText = typeof sched.rest_min === "number" && sched.rest_min > 0 ? ` (+${sched.rest_min}m descanso)` : "";
+          out.push(
+            new Occurrence({
+              id: `ex_${ex.id}_${todayIso(d)}`,
+              title: `🏋️ ${ex.name}${restText}`,
+              kind: "exercise",
+              date: new Date(d),
+              start: sched.time,
+              duration_min: typeof sched.duration_min === "number" && sched.duration_min > 0 ? sched.duration_min : 20,
+              colour: "#ff9632",
+              links: [{ type: "exercise", id: ex.id }],
+              done: isExDone,
+              source: "exercise",
+              editable: false,
+            }),
+          );
+        }
+      }
     }
 
     // 6. Habits
@@ -617,8 +686,13 @@ export class ScheduleManager {
     if (habitsToday.length > 0) {
       const log = this.habitMgr.get_day(d);
       const grouped: Record<string, any>[] = [];
+      const hasScheduledExercises = dayExercises.some((ex) => {
+        const s = schedules[ex.id];
+        return s && s.time && s.in_calendar !== false;
+      });
+
       for (const h of habitsToday) {
-        if (!h.in_calendar) {
+        if (!h.in_calendar || (h.id === "gym" && hasScheduledExercises)) {
           grouped.push(h);
           continue;
         }
@@ -739,6 +813,14 @@ export class ScheduleManager {
         provider.set_done(d, occurrenceId, done);
       }
       return;
+    }
+    if (occurrenceId.startsWith("ex_")) {
+      const parts = occurrenceId.split("_");
+      const exId = parts.slice(1, -1).join("_");
+      if (exId) {
+        this.exerciseMgr.markDone(d, exId, done);
+        return;
+      }
     }
     if (occurrenceId.startsWith(HABIT_PREFIX)) {
       this.habitMgr.setDone(d, occurrenceId.slice(HABIT_PREFIX.length), done);

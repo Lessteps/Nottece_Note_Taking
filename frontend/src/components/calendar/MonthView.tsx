@@ -5,7 +5,7 @@ import { addDays, parseIso } from "../../lib/habits";
 import { todayIso, WEEKDAYS } from "../../lib/tasks";
 import { useCalendar, viewRange } from "../../store/calendar";
 import { cn } from "../ui";
-import { activate } from "./actions";
+import { activate, openOccurrenceContextMenu, openSlotContextMenu } from "./actions";
 
 const MAX = 4;
 
@@ -16,6 +16,8 @@ export function MonthView() {
   const setDay = useCalendar((s) => s.setDay);
   const setView = useCalendar((s) => s.setView);
   const openCreate = useCalendar((s) => s.openCreate);
+  const selectedOccId = useCalendar((s) => s.selectedOccId);
+  const settings = useCalendar((s) => s.settings);
   const [first] = viewRange("mes", day);
   const month = parseIso(day).getMonth();
   const today = todayIso();
@@ -37,6 +39,10 @@ export function MonthView() {
               key={d}
               data-day={d}
               onDoubleClick={(e) => e.target === e.currentTarget && openCreate(d, 9 * 60, 10 * 60)}
+              onContextMenu={(e) => {
+                if (e.target !== e.currentTarget && (e.target as HTMLElement).closest("[data-occ]")) return;
+                openSlotContextMenu(d, null, e, settings?.default_duration_min ?? 60);
+              }}
               className={cn("min-h-0 overflow-hidden border-b border-l border-line p-1", date.getMonth() !== month && "bg-panel/60")}
             >
               <button
@@ -52,13 +58,24 @@ export function MonthView() {
               >
                 {date.getDate() === 1 ? `${date.getDate()} ${["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"][date.getMonth()]}` : date.getDate()}
               </button>
-              {occs.slice(0, MAX).map((o) => (
-                <button
-                  key={o.id}
-                  type="button"
-                  onClick={(e) => activate(o, e)}
-                  className={cn("flex w-full items-center gap-1 truncate rounded px-1 text-left text-[11px] leading-[18px] hover:bg-hover", o.done && "opacity-50 line-through")}
-                >
+              {occs.slice(0, MAX).map((o) => {
+                const isSelected = o.id === selectedOccId;
+                return (
+                  <button
+                    key={o.id}
+                    type="button"
+                    data-occ={o.id}
+                    onClick={(e) => activate(o, e)}
+                    onContextMenu={(e) => {
+                      e.stopPropagation();
+                      openOccurrenceContextMenu(o, e);
+                    }}
+                    className={cn(
+                      "flex w-full items-center gap-1 truncate rounded px-1 text-left text-[11px] leading-[18px] transition-all hover:bg-hover",
+                      o.done && "opacity-50 line-through",
+                      isSelected && "ring-2 ring-accent ring-offset-1 font-semibold bg-accent-soft text-accent-text shadow-sm",
+                    )}
+                  >
                   {o.start ? (
                     <>
                       <span className="h-1.5 w-1.5 flex-none rounded-full" style={{ background: o.colour }} />
@@ -69,7 +86,8 @@ export function MonthView() {
                     <span className="w-full truncate rounded px-1 text-white" style={{ background: o.colour }}>{o.title}</span>
                   )}
                 </button>
-              ))}
+              );
+            })}
               {occs.length > MAX && (
                 <button type="button" onClick={() => { setDay(d); setView("dia"); }}
                   className="px-1 text-[11px] text-dim hover:text-text">

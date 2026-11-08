@@ -10,6 +10,7 @@ import type { EnglishBranch } from "../../lib/englishSkillData";
 import { fitsKey, type CatalogSkill } from "./skillSelection";
 import type { DifficultyLevel } from "./skills";
 import type { TopicType } from "./topicType";
+import { ARCHETYPE_FORBIDDEN, ARCHETYPE_SKILLS, archetypePromptBlock, type PracticeArchetype } from "./programmingArchetype";
 
 export interface PracticePlanSkill {
   skill: string;
@@ -44,6 +45,9 @@ export interface ReevaluationInput {
   /** The vault's `_skills/*.md` guidance (how exercises/notes are shaped). */
   templates?: ReadonlyArray<{ title: string; content: string }>;
   currentSkills?: readonly string[];
+  /** Programming: what kind of practice the topic needs and what was taught before it in the route. */
+  archetype?: PracticeArchetype;
+  taughtBefore?: readonly string[];
 }
 
 /** The prompt that asks the AI to choose competencies and quantities. */
@@ -74,6 +78,7 @@ export function buildReevaluationMessages(input: ReevaluationInput): Array<{ rol
     "Prefer 3-6 skills that really serve THIS topic over covering the catalogue. For each give how many exercises at difficulty 1 (basic), 2 (intermediate) and 3 (advanced); 0 where a level makes no sense or is not allowed. Typical totals per skill: 3-10; central skills get more.",
     "Answer with ONE JSON object and nothing else:",
     '{"topic_type":"theoretical|procedural|mixed","skills":[{"skill":"<id>","difficulties":{"1":n,"2":n,"3":n},"why":"<one short sentence in Spanish>"}],"summary":"<one sentence in Spanish>"}',
+    ...(input.archetype ? ["", `${archetypePromptBlock(input.archetype, input.taughtBefore ?? [])}\nPreferred skills for this archetype: ${ARCHETYPE_SKILLS[input.archetype].join(", ") || "the area's code skills"}.`] : []),
     "",
     `Catalogue for subject "${input.subject}":`,
     catalog,
@@ -374,4 +379,21 @@ export function applyPlanToPractica(text: string, plan: PracticePlan, labels: Re
   if (a >= 0 && b > a) return out.slice(0, a) + section + out.slice(b + PLAN_END.length);
   const eol = out.includes("\r\n") ? "\r\n" : "\n";
   return out.replace(/\s*$/, "") + eol + eol + section + eol;
+}
+
+/**
+ * Removes from a plan the skills that make no sense for the topic's archetype (debug/refactor in a setup topic…). If nothing is
+ * left, the archetype's first three skills are planned with a small default (3 basic, 2 intermediate).
+ */
+export function fitPlanToArchetype(plan: PracticePlan, arch: PracticeArchetype | undefined, catalog: readonly CatalogSkill[] = []): PracticePlan {
+  if (!arch || arch === "code") return plan;
+  const banned = new Set(ARCHETYPE_FORBIDDEN[arch]);
+  const skills = plan.skills.filter((s) => !banned.has(s.skill));
+  if (skills.length === 0) {
+    const known = new Set(catalog.map((c) => c.id));
+    for (const id of ARCHETYPE_SKILLS[arch].filter((id) => !known.size || known.has(id)).slice(0, 3)) {
+      skills.push({ skill: id, counts: { 1: 3, 2: 2, 3: 0 }, why: "Encaja con la naturaleza del tema y con lo que ya se ha visto en la ruta." });
+    }
+  }
+  return { ...plan, skills };
 }

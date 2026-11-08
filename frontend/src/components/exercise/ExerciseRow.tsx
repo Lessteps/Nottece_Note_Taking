@@ -4,7 +4,7 @@
 // `ExerciseRow.test.tsx` lo prueba sin levantar el módulo entero.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Play } from "lucide-react";
+import { Clock, Play, Timer, X, Check } from "lucide-react";
 import type { Exercise } from "../../lib/types";
 import { inputBase } from "../common/forms";
 import { cn } from "../ui";
@@ -14,6 +14,8 @@ import { todayIso } from "../../lib/tasks";
 import { fmtClock } from "../../lib/practiceTimer";
 import { parseRestSecs } from "../../lib/parseRest";
 import { parseRestSeconds, useRestTimer } from "../../store/restTimer";
+import { useWorkoutTimer } from "../../store/workoutTimer";
+import { useHabits } from "../../store/habits";
 import { exerciseFramesUrls, parseExerciseSteps } from "../../lib/exerciseLibrary";
 
 /** Un pitido corto al terminar el descanso. Sin audio, la línea avisa igual. */
@@ -47,6 +49,17 @@ export function ExerciseRow({ day, ex, entry, onChanged, onVideo }: {
   const [weight, setWeight] = useState(entry.weight ? String(entry.weight) : "");
   const [reps, setReps] = useState(entry.reps ? String(entry.reps) : "");
   const [notes, setNotes] = useState(entry.notes ?? "");
+  const gymHabit = useHabits((s) => s.habits.find((h) => h.id === "gym"));
+  const sched = gymHabit?.exercise_schedules?.[ex.id];
+  const [editingTime, setEditingTime] = useState(false);
+  const [schedTime, setSchedTime] = useState(sched?.time ?? "");
+  const [schedDur, setSchedDur] = useState(sched?.duration_min ? String(sched.duration_min) : "20");
+
+  useEffect(() => {
+    setSchedTime(sched?.time ?? "");
+    setSchedDur(sched?.duration_min ? String(sched.duration_min) : "20");
+  }, [sched?.time, sched?.duration_min]);
+
   // Lo que se ve de cada guardado: en reposo no se pinta nada para no meter
   // ruido en la fila que más se mira.
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -214,6 +227,84 @@ export function ExerciseRow({ day, ex, entry, onChanged, onVideo }: {
           <span className={cn("min-w-0 flex-1 truncate text-[13px]", done ? "text-faint line-through" : "text-text")}>{ex.name}</span>
         )}
         {ex.series_reps && <span className="text-[11.5px] text-dim">{ex.series_reps}</span>}
+        <button
+          type="button"
+          onClick={() => useWorkoutTimer.getState().openTimer(ex, day)}
+          title={`Abrir temporizador de series para ${ex.name}`}
+          className="flex-none inline-flex items-center gap-1 rounded-lg border border-line bg-card/60 px-2 py-0.5 text-[11px] font-medium text-dim hover:text-amber-400 hover:border-amber-500/40 hover:bg-amber-500/10 transition-colors"
+        >
+          <Timer size={11} className="text-amber-400" /> Series
+        </button>
+
+        {editingTime ? (
+          <div className="flex items-center gap-1 bg-surface px-1.5 py-0.5 rounded-lg border border-line">
+            <input
+              type="time"
+              value={schedTime}
+              onChange={(e) => setSchedTime(e.target.value)}
+              className="rounded bg-card px-1 py-0.5 text-[11px] font-mono text-text outline-none focus:border-amber-400"
+            />
+            <input
+              type="number"
+              min={5}
+              max={120}
+              step={5}
+              value={schedDur}
+              onChange={(e) => setSchedDur(e.target.value)}
+              className="w-10 rounded bg-card px-1 py-0.5 text-[11px] font-mono text-text outline-none focus:border-amber-400"
+              title="Duración en minutos"
+            />
+            <span className="text-[10px] text-faint">m</span>
+            <button
+              type="button"
+              onClick={() => {
+                const currentSchedules = { ...(gymHabit?.exercise_schedules ?? {}) };
+                if (schedTime) {
+                  currentSchedules[ex.id] = {
+                    time: schedTime,
+                    duration_min: Number(schedDur) || 20,
+                    in_calendar: true,
+                  };
+                } else {
+                  delete currentSchedules[ex.id];
+                }
+                void useHabits.getState().update("gym", { exercise_schedules: currentSchedules });
+                setEditingTime(false);
+              }}
+              title="Guardar horario"
+              className="rounded p-0.5 text-mint hover:bg-hover"
+            >
+              <Check size={12} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setEditingTime(false)}
+              title="Cancelar"
+              className="rounded p-0.5 text-faint hover:bg-hover hover:text-text"
+            >
+              <X size={12} />
+            </button>
+          </div>
+        ) : sched?.time ? (
+          <button
+            type="button"
+            onClick={() => setEditingTime(true)}
+            title={`Horario en calendario: ${sched.time} (${sched.duration_min ?? 20} min). Clic para editar.`}
+            className="flex-none inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 font-mono text-[11px] text-amber-400 hover:bg-amber-500/20 transition-colors"
+          >
+            <Clock size={10} /> {sched.time}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setEditingTime(true)}
+            title="Asignar horario para el calendario"
+            className="flex-none opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-faint hover:text-text hover:bg-hover transition-all"
+          >
+            <Clock size={10} /> Horario
+          </button>
+        )}
+
         {ex.rest && (
           <button
             type="button"

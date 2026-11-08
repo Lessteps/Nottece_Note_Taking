@@ -150,7 +150,7 @@ export const TASK_OPTIONAL_KEYS = ["repeat", "repeat_until"] as const;
 export const HABIT_OPTIONAL_KEYS = [
   "repeat", "start_date", "end_date", "paused_from", "time",
   "duration_min", "in_calendar", "reminder_min", "colour", "notes",
-  "area",
+  "area", "exercise_schedules",
 ] as const;
 
 export const RECURRENCE_KINDS = ["daily", "weekly", "every", "monthly"] as const;

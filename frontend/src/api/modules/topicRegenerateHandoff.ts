@@ -22,7 +22,8 @@ import { scanTopicDesigns } from "../../core/mentor/topicDesignScan.js";
 import { clearExerciseIndexCache } from "../../core/practice/exerciseIndex.js";
 import { keyOf } from "../../core/practice/domain.js";
 import { learningPromptLines } from "../../core/practice/learningLog.js";
-import { applyPlanToPractica, buildReevaluationMessages, parsePracticePlan } from "../../core/practice/practicePlan.js";
+import { applyPlanToPractica, buildReevaluationMessages, fitPlanToArchetype, parsePracticePlan } from "../../core/practice/practicePlan.js";
+import { routeContextOf, taughtBeforeOf } from "../../core/practice/routeContext.js";
 import { buildTopicSession, parseExerciseArray, type GeneratedExercise, type SessionAIClient, type TheoryNoteContext } from "../../core/practice/sessionBuilder.js";
 import { catalogFor } from "../../core/practice/skillSelection.js";
 import type { DifficultyLevel } from "../../core/practice/skills.js";
@@ -193,10 +194,13 @@ export function topicRegenerateHandoffApi(app: AppState, hooks: HandoffHooks = {
     const subject = manifest.subject || "mathematics";
     const cls = classifyForTopic(app, folder, manifest);
     const catalog = catalogFor(subject);
+    const route = subject === "programming" ? routeContextOf(topicAbs, manifest.title, cls.topicType) : null;
     const messages = buildReevaluationMessages({
       subject,
       title: manifest.title,
       topicType: cls.topicType,
+      archetype: route?.archetype,
+      taughtBefore: route?.taughtBefore,
       branch: cls.branch,
       catalog,
       theory: readTheoryNotes(app, topicAbs),
@@ -219,6 +223,7 @@ export function topicRegenerateHandoffApi(app: AppState, hooks: HandoffHooks = {
       assistance: "no_help" as const,
       planCount: null,
       learning: learningPromptLines(app.root, folder, skill),
+      taughtBefore: taughtBeforeOf(topicAbs),
       ...vocabularyWords(app, found.manifest.subject, skill, found.manifest.title),
     };
     return { manifest: found.manifest, theoryNotes, config };
@@ -665,8 +670,12 @@ export function topicRegenerateHandoffApi(app: AppState, hooks: HandoffHooks = {
     if (!fs.existsSync(file)) return [`Falta ${t.out}/practica.json.`];
     const ctx = practiceCtx(t.folder);
     const reply = fs.readFileSync(file, "utf-8");
-    const plan = parsePracticePlan(reply, ctx.catalog, keyOf(ctx.cls));
+    let plan = parsePracticePlan(reply, ctx.catalog, keyOf(ctx.cls));
     if (!plan) return [`practica.json no es un plan válido: hace falta un objeto JSON con «skills» (ids del catálogo, con «difficulties» 1/2/3) y al menos una skill que encaje con el tema. Empieza por: «${reply.replace(/\s+/g, " ").trim().slice(0, 100)}»`];
+    if (ctx.manifest.subject === "programming") {
+      const route = routeContextOf(ctx.topicAbs, ctx.manifest.title, ctx.cls.topicType);
+      plan = fitPlanToArchetype(plan, route.archetype, ctx.catalog);
+    }
     if (ctx.cls.domain !== "english") plan.topicType = plan.topicType ?? ctx.cls.topicType;
     const name = path.basename(ctx.topicAbs);
     const practicaAbs = path.join(ctx.topicAbs, viewFileName(name, "practica"));

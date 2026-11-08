@@ -108,6 +108,13 @@ function habitFields(fields: unknown): {
   if ("area" in f) {
     opts.area = oneLine(f.area, 80) || null;
   }
+  if ("exercise_schedules" in f) {
+    if (f.exercise_schedules && typeof f.exercise_schedules === "object" && !Array.isArray(f.exercise_schedules)) {
+      opts.exercise_schedules = f.exercise_schedules;
+    } else {
+      opts.exercise_schedules = null;
+    }
+  }
   return { core, opts };
 }
 

@@ -6,13 +6,23 @@ import { fmtHm, layoutDay, toHm, visible, WEEKDAYS_ES } from "../../lib/calendar
 import { addDays, parseIso } from "../../lib/habits";
 import { todayIso } from "../../lib/tasks";
 import type { Occurrence } from "../../lib/types";
-import { useCalendar } from "../../store/calendar";
+import { useCalendar, type ZoomInterval } from "../../store/calendar";
 import { cn } from "../ui";
-import { activate, canDrag } from "./actions";
+import { activate, canDrag, openOccurrenceContextMenu, openSlotContextMenu } from "./actions";
 
-const HOUR = 48;
-const SNAP = 15;
-const snap = (min: number) => Math.round(min / SNAP) * SNAP;
+export const ZOOM_CONFIG: Record<ZoomInterval, {
+  hourHeight: number;
+  intervalMin: number;
+  snapMin: number;
+  label: string;
+}> = {
+  60: { hourHeight: 52, intervalMin: 60, snapMin: 15, label: "60 min" },
+  45: { hourHeight: 72, intervalMin: 45, snapMin: 15, label: "45 min" },
+  30: { hourHeight: 104, intervalMin: 30, snapMin: 15, label: "30 min" },
+  15: { hourHeight: 168, intervalMin: 15, snapMin: 15, label: "15 min" },
+  10: { hourHeight: 252, intervalMin: 10, snapMin: 5, label: "10 min" },
+  5: { hourHeight: 480, intervalMin: 5, snapMin: 5, label: "5 min" },
+};
 
 type Drag =
   | { type: "create"; day: string; from: number; to: number }
@@ -37,19 +47,61 @@ export function TimeGrid({ days }: { days: string[] }) {
   const openCreate = useCalendar((s) => s.openCreate);
   const editor = useCalendar((s) => s.editor);
   const move = useCalendar((s) => s.move);
+  const selectedOccId = useCalendar((s) => s.selectedOccId);
+  const zoom = useCalendar((s) => s.zoom);
+
+  const zoomCfg = ZOOM_CONFIG[zoom] ?? ZOOM_CONFIG[60];
+  const HOUR = zoomCfg.hourHeight;
+  const SNAP = zoomCfg.snapMin;
+  const snap = (min: number) => Math.round(min / SNAP) * SNAP;
+
+  const subTicks = useMemo(() => {
+    if (zoomCfg.intervalMin >= 60) return [];
+    const ticks: number[] = [];
+    for (let m = zoomCfg.intervalMin; m < 24 * 60; m += zoomCfg.intervalMin) {
+      if (m % 60 !== 0) {
+        ticks.push(m);
+      }
+    }
+    return ticks;
+  }, [zoomCfg.intervalMin]);
+
   const scroller = useRef<HTMLDivElement>(null);
   const cols = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
   const dragRef = useRef<Drag | null>(null);
   dragRef.current = drag;
   const today = todayIso();
+
+  useEffect(() => {
+    if (!selectedOccId) return;
+    const timer = setTimeout(() => {
+      const el = document.querySelector(`[data-occ="${selectedOccId}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [selectedOccId, days, data]);
   const now = useNow();
   const nowMin = now.getHours() * 60 + now.getMinutes();
 
+  const prevHourRef = useRef(HOUR);
   useEffect(() => {
     const el = scroller.current;
-    if (el) el.scrollTop = Math.max(0, ((settings?.day_start_hour ?? 7) - 0.5) * HOUR);
-  }, [settings?.day_start_hour, days.length]);
+    if (!el) return;
+    const prevH = prevHourRef.current;
+    if (prevH !== HOUR) {
+      const currentCenterHour = (el.scrollTop + el.clientHeight / 2) / prevH;
+      el.scrollTop = currentCenterHour * HOUR - el.clientHeight / 2;
+      prevHourRef.current = HOUR;
+    }
+  }, [HOUR]);
+
+  useEffect(() => {
+    const el = scroller.current;
+    if (el) el.scrollTop = Math.max(0, ((settings?.day_start_hour ?? 5) - 0.5) * HOUR);
+  }, [settings?.day_start_hour, days.length, HOUR]);
 
   // Pointer position -> (day, minute) in the grid.
   const locate = (clientX: number, clientY: number): [string, number] => {
@@ -128,19 +180,36 @@ export function TimeGrid({ days }: { days: string[] }) {
                   {date.getDate()}
                 </span>
               </button>
-              <div className="mt-1 space-y-0.5">
-                {allDay.map((o) => (
-                  <button
-                    key={o.id}
-                    type="button"
-                    data-occ={o.id}
-                    onClick={(e) => activate(o, e)}
-                    className={cn("block w-full truncate rounded px-1.5 py-0.5 text-left text-[11.5px] text-white", o.done && "line-through opacity-60")}
-                    style={{ background: o.colour }}
-                  >
-                    {o.title}
-                  </button>
-                ))}
+              <div
+                className="mt-1 space-y-0.5"
+                onContextMenu={(e) => {
+                  if (e.target !== e.currentTarget && (e.target as HTMLElement).closest("[data-occ]")) return;
+                  openSlotContextMenu(d, null, e, settings?.default_duration_min ?? 60);
+                }}
+              >
+                {allDay.map((o) => {
+                  const isSelected = o.id === selectedOccId;
+                  return (
+                    <button
+                      key={o.id}
+                      type="button"
+                      data-occ={o.id}
+                      onClick={(e) => activate(o, e)}
+                      onContextMenu={(e) => {
+                        e.stopPropagation();
+                        openOccurrenceContextMenu(o, e);
+                      }}
+                      className={cn(
+                        "block w-full truncate rounded px-1.5 py-0.5 text-left text-[11.5px] text-white transition-all",
+                        o.done && "line-through opacity-60",
+                        isSelected && "ring-2 ring-accent ring-offset-1 ring-offset-surface font-semibold shadow-md",
+                      )}
+                      style={{ background: o.colour }}
+                    >
+                      {o.title}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           );
@@ -155,11 +224,39 @@ export function TimeGrid({ days }: { days: string[] }) {
                 {h + 1}:00
               </span>
             ))}
+            {subTicks.map((m) => {
+              const isQuarter = m % 15 === 0;
+              return (
+                <span
+                  key={`sub-${m}`}
+                  className={cn(
+                    "absolute right-2 -translate-y-1/2 font-mono",
+                    isQuarter ? "text-[9.5px] text-faint" : "text-[8.5px] text-faint/50",
+                  )}
+                  style={{ top: (m / 60) * HOUR }}
+                >
+                  {fmtHm(m)}
+                </span>
+              );
+            })}
           </div>
           <div ref={cols} className="relative flex flex-1">
             {Array.from({ length: 24 }, (_, h) => (
               <div key={h} className="pointer-events-none absolute inset-x-0 border-t border-line/70" style={{ top: h * HOUR }} />
             ))}
+            {subTicks.map((m) => {
+              const isQuarter = m % 15 === 0;
+              return (
+                <div
+                  key={`subline-${m}`}
+                  className={cn(
+                    "pointer-events-none absolute inset-x-0 border-t",
+                    isQuarter ? "border-line/45 border-dashed" : "border-line/25 border-dotted",
+                  )}
+                  style={{ top: (m / 60) * HOUR }}
+                />
+              );
+            })}
             {days.map((d, i) => {
               const placed = layoutDay(perDay[i]!);
               return (
@@ -173,6 +270,12 @@ export function TimeGrid({ days }: { days: string[] }) {
                     const from = Math.min(24 * 60 - SNAP, Math.floor(min / SNAP) * SNAP);
                     setDrag({ type: "create", day, from, to: from + (settings?.default_duration_min ?? 60) });
                   }}
+                  onContextMenu={(e) => {
+                    if (e.target !== e.currentTarget && (e.target as HTMLElement).closest("[data-occ]")) return;
+                    const [day, min] = locate(e.clientX, e.clientY);
+                    const snapped = snap(min);
+                    openSlotContextMenu(day, snapped, e, settings?.default_duration_min ?? 60);
+                  }}
                 >
                   {placed.map((p) => {
                     const dragging = drag && drag.type !== "create" && drag.occ.id === p.occ.id && drag.occ.date === p.occ.date;
@@ -180,6 +283,7 @@ export function TimeGrid({ days }: { days: string[] }) {
                     const start = dragging ? drag.start : p.start;
                     const end = dragging ? drag.start + drag.duration : p.end;
                     const h = Math.max(18, ((end - start) / 60) * HOUR - 2);
+                    const isSelected = p.occ.id === selectedOccId;
                     return (
                       <div
                         key={p.occ.id}
@@ -198,10 +302,15 @@ export function TimeGrid({ days }: { days: string[] }) {
                             grab: min - p.start, x0: e.clientX, y0: e.clientY, moved: false,
                           });
                         }}
+                        onContextMenu={(e) => {
+                          e.stopPropagation();
+                          openOccurrenceContextMenu(p.occ, e);
+                        }}
                         className={cn(
-                          "absolute cursor-pointer overflow-hidden rounded-md px-1.5 py-0.5 text-[11.5px] leading-tight text-white shadow-sm",
+                          "absolute cursor-pointer overflow-hidden rounded-md px-1.5 py-0.5 text-[11.5px] leading-tight text-white shadow-sm transition-all",
                           p.occ.done && "opacity-55",
                           dragging && "z-10 ring-2 ring-white/60",
+                          isSelected && "z-30 ring-4 ring-accent ring-offset-2 ring-offset-surface shadow-2xl scale-[1.03] animate-pulse",
                         )}
                         style={{
                           top: (start / 60) * HOUR + 1,
@@ -211,8 +320,22 @@ export function TimeGrid({ days }: { days: string[] }) {
                           background: p.occ.colour,
                         }}
                       >
-                        <div className={cn("truncate font-medium", p.occ.done && "line-through")}>{p.occ.title}</div>
-                        {h > 30 && <div className="truncate opacity-85">{fmtHm(start)} – {fmtHm(end)}</div>}
+                        {h < 26 ? (
+                          <div className="flex items-center justify-between gap-1 overflow-hidden leading-tight">
+                            <span className={cn("truncate font-medium", p.occ.done && "line-through")}>{p.occ.title}</span>
+                            <span className="shrink-0 font-mono text-[9.5px] opacity-80">{fmtHm(start)}</span>
+                          </div>
+                        ) : (
+                          <>
+                            <div className={cn("truncate font-medium", p.occ.done && "line-through")}>{p.occ.title}</div>
+                            <div className="truncate font-mono text-[10px] opacity-85">{fmtHm(start)} – {fmtHm(end)}</div>
+                            {p.occ.kind === "integrated_block" && Boolean((p.occ.links?.[0] as Record<string, any> | undefined)?.topicCount) && (
+                              <div className="truncate font-mono text-[9px] opacity-90 text-white/95">
+                                ⚡ {(p.occ.links[0] as Record<string, any>).topicCount} sub-eventos
+                              </div>
+                            )}
+                          </>
+                        )}
                         {canDrag(p.occ) && (
                           <div
                             className="absolute inset-x-0 bottom-0 h-1.5 cursor-ns-resize"

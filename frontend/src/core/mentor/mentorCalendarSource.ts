@@ -5,8 +5,9 @@
 
 import * as path from "node:path";
 import { Occurrence } from "../scheduleManager.js";
+import { todayIso } from "../dates.js";
 import { PlanStore } from "./plan.js";
-import { buildSchedule } from "../../lib/planSchedule.js";
+import { buildSchedule, progressPlan } from "../../lib/planSchedule.js";
 import { dayByArea } from "../../lib/planTopicsByArea.js";
 import { placeBlocks } from "../../lib/areaTimes.js";
 import { AreaTimesStore } from "./areaTimesStore.js";
@@ -41,36 +42,124 @@ export class MentorCalendarSource {
 
     const firstIso = first.toISOString().slice(0, 10);
     const lastIso = last.toISOString().slice(0, 10);
+    const currentToday = todayIso();
+    const asOf =
+      currentToday >= firstIso && currentToday <= lastIso
+        ? currentToday
+        : firstIso >= activePlan.start && firstIso <= activePlan.end
+          ? firstIso
+          : activePlan.start;
 
     const times = new AreaTimesStore(this.vaultRoot).load(activePlan.id);
-    const sch = buildSchedule(activePlan as any);
+    const planProg = progressPlan(activePlan as any, { today: asOf });
+    const sch = buildSchedule(planProg);
     for (const [dateStr, day] of sch.byDate.entries()) {
       if (dateStr < firstIso || dateStr > lastIso) continue;
       if (!day.study) continue;
 
-      const entries = dayByArea(activePlan, day, []);
+      const allEntries = dayByArea(planProg, day, []);
+      // El usuario solicitó explícitamente generar ÚNICAMENTE Backend en el calendario
+      // (eliminar frontend, bases de datos, etc. para evitar superposiciones con la rutina de ejercicios)
+      const entries = allEntries.filter(
+        (e) => e.areaId === "backend" || e.subplanId.includes("backend")
+      );
       if (!entries.length) continue;
 
       out[dateStr] = out[dateStr] || [];
-      // la hora que el estudiante fijó a un área manda; el resto se apila desde las 09:00 (ver `placeBlocks`)
-      const placed = placeBlocks(entries.map((e) => ({ key: e.subplanId, minutes: e.theoryMinutes + e.practiceMinutes })), times);
+
+      // Calcular tiempo suficiente para cubrir todos los temas del día de cada área
+      const dayBlocksIn = entries.map((e) => {
+        const totalSessionMinutes = (e.theoryMinutes || 0) + (e.practiceMinutes || 0);
+        const dayTopics = day.topics.filter(
+          (t) => (t.subplanId === e.subplanId || (e.areaId && t.areaId === e.areaId)) && t.group !== "bases"
+        );
+        const topicMinutes = dayTopics.reduce(
+          (sum, t) => sum + (t.minutes || 30),
+          0
+        );
+        const neededMinutes = Math.max(
+          totalSessionMinutes,
+          topicMinutes,
+          30
+        );
+        const roundedDur = Math.ceil(neededMinutes / 5) * 5;
+        return {
+          key: e.subplanId,
+          areaId: e.areaId,
+          minutes: roundedDur,
+        };
+      });
+
+      // la hora fijada por el estudiante manda (ej. Backend a las 06:30); el resto se apila secuencialmente
+      const placed = placeBlocks(dayBlocksIn, times);
 
       for (const e of entries) {
-        const areaColor = AREA_COLOURS[e.areaId ?? e.subplanId] ?? "#38bdf8";
-        const dayTopics = day.topics.filter((t) => t.subplanId === e.subplanId);
-        const topicTitles = dayTopics.map((t) => t.title).join(", ");
-        const slot = placed.find((p) => p.key === e.subplanId)!;
-        const title = `📚 ${e.area}: ${topicTitles || `${e.theoryTopics} temas`} (${slot.durationMin}m)`;
+        const slot = placed.find((p) => p.key === e.subplanId);
+        if (!slot) continue;
+
+        const areaColor = AREA_COLOURS[e.areaId ?? e.subplanId] ?? "#6366f1";
+
+        // Los sub-eventos deben coincidir exactamente con el plan de sesión de Mentor para Full Stack Junior
+        const blockItems = (e.blocks ?? []).flatMap((bl) =>
+          bl.items.map((it) => ({
+            folder: it.folder,
+            title: it.title,
+            group: it.group ?? "",
+            groupTitle: it.groupTitle ?? "",
+            done: Boolean((it as any).done),
+            minutes: it.minutes,
+          }))
+        );
+
+        const dayTopics = day.topics.filter(
+          (t) => (t.subplanId === e.subplanId || (e.areaId && t.areaId === e.areaId)) && t.group !== "bases"
+        );
+
+        const subEvents = blockItems.length > 0 ? blockItems : dayTopics.map((t) => ({
+          folder: t.folder,
+          title: t.title,
+          group: t.group ?? "",
+          groupTitle: t.groupTitle ?? "",
+          done: t.done,
+          minutes: t.minutes,
+        }));
+
+        const isDone = subEvents.length > 0 && subEvents.every((t) => t.done);
+        const title = `⚡ Bloque Integrado: ${e.area}`;
+
+        const idSuffix = (e.subplanId === "backend" || e.areaId === "backend" || e.subplanId.includes("backend"))
+          ? (e.subplanId.endsWith(":backend") || e.subplanId === "backend" ? e.subplanId : `${e.subplanId}:backend`)
+          : e.subplanId;
+
+        const occId = `mentor:block:${activePlan.id}:${dateStr}:${idSuffix}`;
+
         const occ = new Occurrence(
-          `mentor:${activePlan.id}:${dateStr}:${e.subplanId}`,
+          occId,
           title,
-          "mentor_study",
+          "integrated_block",
           new Date(dateStr + "T00:00:00"),
           slot.start,
           slot.durationMin,
           areaColor,
-          [{ type: "mentor_day", id: activePlan.id, date: dateStr, subplanId: e.subplanId }],
-          false,
+          [
+            {
+              type: "integrated_block",
+              planId: activePlan.id,
+              date: dateStr,
+              subplanId: e.subplanId,
+              area: e.area,
+              areaId: e.areaId,
+              topicCount: subEvents.length,
+              topics: subEvents,
+            },
+            {
+              type: "mentor_day",
+              id: activePlan.id,
+              date: dateStr,
+              subplanId: e.subplanId,
+            },
+          ],
+          isDone,
           "mentor",
           false
         );

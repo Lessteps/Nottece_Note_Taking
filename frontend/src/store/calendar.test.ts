@@ -201,3 +201,31 @@ describe("setDone/move (optimistic)", () => {
     expect(useCalendar.getState().days["2026-09-29"]).toHaveLength(1);
   });
 });
+
+describe("zoom levels", () => {
+  it("allows setting 5-minute zoom and stepping in/out", () => {
+    useCalendar.getState().setZoom(60);
+    expect(useCalendar.getState().zoom).toBe(60);
+
+    // Zoom all the way in to 5 min
+    useCalendar.getState().zoomIn(); // 45
+    expect(useCalendar.getState().zoom).toBe(45);
+    useCalendar.getState().zoomIn(); // 30
+    useCalendar.getState().zoomIn(); // 15
+    useCalendar.getState().zoomIn(); // 10
+    useCalendar.getState().zoomIn(); // 5
+    expect(useCalendar.getState().zoom).toBe(5);
+
+    // Cannot zoom in past 5
+    useCalendar.getState().zoomIn();
+    expect(useCalendar.getState().zoom).toBe(5);
+
+    // Zoom back out
+    useCalendar.getState().zoomOut(); // 10
+    expect(useCalendar.getState().zoom).toBe(10);
+
+    // Direct setting
+    useCalendar.getState().setZoom(5);
+    expect(useCalendar.getState().zoom).toBe(5);
+  });
+});

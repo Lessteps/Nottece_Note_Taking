@@ -261,7 +261,7 @@ export function PlanScopePage(props: PlanScopePageProps) {
   };
 
   return (
-    <div className="space-y-5 pt-4" data-testid="plan-agenda" data-scope={key}>
+    <div className="space-y-5 pt-4 min-w-0 max-w-full" data-testid="plan-agenda" data-scope={key}>
       <VaultSyncBanner planId={plan.id} />
       <DepthBanner planId={plan.id} {...(activeSubplan ? { subplanId: activeSubplan.id } : {})} />
       <MethodologyWarningBanner

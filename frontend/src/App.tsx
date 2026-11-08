@@ -145,7 +145,11 @@ function useShortcuts() {
         }
       } else if (key === "\\") {
         e.preventDefault();
-        s.toggleExplorer();
+        if (e.altKey) {
+          s.toggleRightPanel();
+        } else {
+          s.toggleExplorer();
+        }
       }
     };
     window.addEventListener("keydown", onKey);
@@ -261,6 +265,7 @@ export function App() {
   // The view to show is driven by the active tab's module id.
   const module = useApp((s) => s.module);
   const sideModule = useApp((s) => s.sideModule);
+  const rightPanelOpen = useApp((s) => s.rightPanelOpen);
 
   const draggingTabId = useTabDrag((s) => s.draggingTabId);
   const [dropReady, setDropReady] = useState(false);
@@ -329,7 +334,7 @@ export function App() {
         )}
         {/* Una sola columna derecha en toda la app: la tira de lanzadores o la
             cara que sus botones abran. */}
-        <RightPanel module={module} />
+        {rightPanelOpen && <RightPanel module={module} />}
         {dropReady && draggingTabId && (
           <div className="pointer-events-none absolute inset-y-0 right-0 w-1/3 border-l-2 border-accent bg-accent-soft/20" aria-hidden="true" />
         )}
