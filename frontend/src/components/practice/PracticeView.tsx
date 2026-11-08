@@ -2,7 +2,7 @@
 // answer, hints, timer, AI grading and the attempt history.
 
 import {
-  Bug, ClipboardPaste, Eye, FileOutput, Lightbulb, Pause, Pencil, PenTool, Play, RotateCcw, Send, SlidersHorizontal, Timer, X,
+  BookOpen, Bug, ClipboardPaste, Eye, FileOutput, Lightbulb, Pause, Pencil, PenTool, Play, RotateCcw, Send, SlidersHorizontal, Timer, X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../lib/bridge";
@@ -59,9 +59,34 @@ export function PracticeView({ note }: { note: OpenNote }) {
   const [timer, setTimer] = useState<TimerState>(initialTimer);
   const [running, setRunning] = useState(false);
   const [interactiveMode, setInteractiveMode] = useState(true);
+  const [showTheory, setShowTheory] = useState(false);
+  const [theoryText, setTheoryText] = useState<string | null>(null);
+  const [theoryLoading, setTheoryLoading] = useState(false);
   const secondsOverride = useRef<number | null>(null);
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rel = note.path;
+
+  const toggleTheory = async () => {
+    if (showTheory) {
+      setShowTheory(false);
+      return;
+    }
+    setShowTheory(true);
+    if (!theoryText) {
+      setTheoryLoading(true);
+      try {
+        const topicFolder = rel.replace(/\/Ejercicios\/.*$/, "");
+        const topicName = topicFolder.split("/").pop() || "";
+        const theoryPath = `${topicFolder}/${topicName}.md`;
+        const data = await api.readNote(theoryPath);
+        setTheoryText(data?.raw || "No se encontró el archivo de teoría.");
+      } catch {
+        setTheoryText("No se pudo cargar la nota de teoría.");
+      } finally {
+        setTheoryLoading(false);
+      }
+    }
+  };
 
   const load = useCallback(async () => {
     try {
@@ -353,6 +378,32 @@ export function PracticeView({ note }: { note: OpenNote }) {
           </button>
         </header>
 
+        {showTheory && (
+          <section className="rounded-xl border border-line bg-panel p-4 shadow-sm animate-fadeIn">
+            <div className="flex items-center justify-between border-b border-line pb-2 mb-3">
+              <div className="flex items-center gap-2">
+                <BookOpen size={15} className="text-accent-text" />
+                <span className="font-semibold text-[13px] text-text">Referencia Teórica del Tema</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowTheory(false)}
+                className="grid h-6 w-6 place-items-center rounded text-faint hover:bg-hover hover:text-text"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            {theoryLoading ? (
+              <p className="text-[12.5px] text-faint">Cargando teoría…</p>
+            ) : (
+              <div
+                className="nv-prose max-h-[350px] overflow-y-auto pr-2 text-[13.5px] leading-relaxed"
+                dangerouslySetInnerHTML={{ __html: md(theoryText?.replace(/^---[\s\S]*?---\s*/, "") || "") }}
+              />
+            )}
+          </section>
+        )}
+
         {renderedStatement && (
           <section>
             <h2 className="mb-1.5 font-mono text-[10.5px] uppercase tracking-wider text-faint">Enunciado</h2>
@@ -385,6 +436,17 @@ export function PracticeView({ note }: { note: OpenNote }) {
               <div className="flex items-center justify-between">
                 <h2 className="font-mono text-[10.5px] uppercase tracking-wider text-faint">Tu respuesta</h2>
                 <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => void toggleTheory()}
+                    title="Consulta la nota de teoría del tema para repasar conceptos y comandos"
+                    className={cn(
+                      "flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[11.5px] font-semibold transition-colors",
+                      showTheory ? "border-accent bg-accent-soft text-accent-text" : "border-line bg-card text-dim hover:border-accent hover:text-text",
+                    )}
+                  >
+                    <BookOpen size={12} /> {showTheory ? "Ocultar teoría" : "Ver teoría"}
+                  </button>
                   {hasInteractiveView && (
                     <button
                       type="button"
@@ -429,6 +491,8 @@ export function PracticeView({ note }: { note: OpenNote }) {
                   />
                 ) : (
                   <ProjectStructureLab
+                    statement={ex.statement}
+                    discipline={ex.discipline}
                     value={answer}
                     disabled={graded || !!pending}
                     onChange={onAnswer}

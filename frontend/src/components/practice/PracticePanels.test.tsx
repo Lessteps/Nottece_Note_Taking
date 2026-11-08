@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseStatementQuestions } from "./ConceptQuizPanel";
-import { buildAsciiTree } from "./ProjectStructureLab";
+import { buildAsciiTree, parseLabRequirements } from "./ProjectStructureLab";
 
 describe("parseStatementQuestions", () => {
   it("parses multiple choice questions with A-D options", () => {
@@ -56,6 +56,32 @@ describe("buildAsciiTree", () => {
 
   it("handles empty path array gracefully", () => {
     expect(buildAsciiTree([])).toBe("(vacío)");
+  });
+});
+
+describe("parseLabRequirements", () => {
+  it("extracts project name, paths and commands from exercise statement", () => {
+    const statement = `
+You are initializing a small Python project named \`my_project\` that requires testing.
+1. Include:
+   - The virtual environment folder \`.venv/\`
+   - The main entry file \`main.py\`
+   - A helper module \`utils/helpers.py\`
+   - A test module \`tests/test_helpers.py\`
+2. Write terminal commands:
+   - Create with \`python -m venv .venv\`
+   - Run the entry file from the project directory.
+    `.trim();
+
+    const reqs = parseLabRequirements(statement, "python");
+    expect(reqs.projectName).toBe("my_project");
+    expect(reqs.requiredPaths).toContain(".venv/");
+    expect(reqs.requiredPaths).toContain("main.py");
+    expect(reqs.requiredPaths).toContain("utils/helpers.py");
+    expect(reqs.requiredPaths).toContain("tests/test_helpers.py");
+    expect(reqs.requiredCommands).toContain("python -m venv .venv");
+    expect(reqs.requiredCommands).toContain("python main.py");
+    expect(reqs.suggestedPaths.length).toBeGreaterThanOrEqual(4);
   });
 });
 
