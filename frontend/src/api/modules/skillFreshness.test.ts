@@ -143,3 +143,32 @@ describe("el mapa y la fecha de cambio de la skill", () => {
     expect(outdatedByFolder(root, [F]).get(F)).toMatchObject({ canvas: true });
   });
 });
+
+describe("arquetipos de programación: practica y ejercicios desactualizados", () => {
+  const SETUP = "Programación/2.1 Python/2.1.1 Project structure, virtual environments and imports";
+  const INVALID_PRACTICA = `---\ntype: practica\nsubject: programming\ntitle: 2.1.1 Project structure, virtual environments and imports\ntopic_type: mixed\nskills: [pg_true_false, explain, implement]\nplan: "pg_true_false=4/0/0, explain=4/0/0, implement=4/0/0"\n---\n`;
+  const VALID_PRACTICA = `---\ntype: practica\nsubject: programming\ntitle: 2.1.1 Project structure, virtual environments and imports\ntopic_type: mixed\nskills: [project_structure, commands, pg_quiz, pg_true_false, explain]\nplan: "project_structure=4/0/0, commands=4/0/0, pg_true_false=4/0/0, explain=4/0/0"\n---\n`;
+
+  it("detecta .practica con habilidades prohibidas para el arquetipo setup (ej: implement)", () => {
+    put(`${SETUP}/2.1.1 Project structure, virtual environments and imports.practica.md`, INVALID_PRACTICA);
+    const out = outdatedByFolder(root, [SETUP]);
+    expect(out.get(SETUP)).toMatchObject({ practica: true });
+  });
+
+  it("detecta carpeta Ejercicios con ejercicios de habilidades prohibidas o sin habilidades requeridas", () => {
+    put(`${SETUP}/2.1.1 Project structure, virtual environments and imports.practica.md`, VALID_PRACTICA);
+    put(`${SETUP}/Ejercicios/implement/ej_implement_1.md`, "---\nmode: implement\n---\ncode");
+    put(`${SETUP}/Ejercicios/explain/ej_explain_1.md`, "---\nmode: explain\n---\nexplanation");
+    const out = outdatedByFolder(root, [SETUP]);
+    expect(out.get(SETUP)).toMatchObject({ exercises: true });
+  });
+
+  it("un tema setup con practica y ejercicios acordes al arquetipo no sale atrasado", () => {
+    put(`${SETUP}/2.1.1 Project structure, virtual environments and imports.practica.md`, VALID_PRACTICA);
+    put(`${SETUP}/Ejercicios/project_structure/ej_struct_1.md`, "---\nmode: project_structure\n---\nstructure");
+    put(`${SETUP}/Ejercicios/explain/ej_explain_1.md`, "---\nmode: explain\n---\nexplanation");
+    const out = outdatedByFolder(root, [SETUP]);
+    expect(out.get(SETUP)?.practica).toBeFalsy();
+    expect(out.get(SETUP)?.exercises).toBeFalsy();
+  });
+});

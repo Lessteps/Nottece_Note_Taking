@@ -49,6 +49,7 @@ export interface OutdatedSkills {
   theory?: true;
   canvas?: true;
   practica?: true;
+  exercises?: true;
 }
 
 export type PlanTopicCatalog = PlanTopicRow[];

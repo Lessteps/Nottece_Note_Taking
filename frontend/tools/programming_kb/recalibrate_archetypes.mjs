@@ -104,9 +104,15 @@ function checkManifest(practicaPath) {
   const arch = detectArchetype(title);
   if (arch !== "setup" && arch !== "concept") return;
 
-  // Check if manifest has inappropriate coding skills like debug or refactor
-  const hasInappropriate = skillsLine.includes("debug") || skillsLine.includes("refactor") || skillsLine.includes("trace");
-  if (!hasInappropriate) return;
+  // Check if manifest has inappropriate coding skills or lacks archetype skills
+  const forbiddenSkills = arch === "setup"
+    ? ["implement", "debug", "refactor", "trace"]
+    : ["implement", "debug", "refactor", "trace", "design", "commands"];
+
+  const hasForbidden = forbiddenSkills.some((s) => skillsLine.includes(s));
+  const lacksRequired = arch === "setup" && !skillsLine.includes("project_structure");
+
+  if (!hasForbidden && !lacksRequired) return;
 
   const newSkills = ARCHETYPE_SKILLS[arch];
   const newSkillsStr = `skills: [${newSkills.map((s) => `"${s}"`).join(", ")}]`;
@@ -116,8 +122,15 @@ function checkManifest(practicaPath) {
   if (arch === "concept" && !updatedFm.includes("topic_type: theoretical")) {
     updatedFm = updatedFm.replace(/^topic_type:.*$/m, "topic_type: theoretical");
   }
+  if (arch === "setup") {
+    updatedFm = updatedFm.replace(/implement=/g, "project_structure=");
+  }
 
-  const updatedRaw = raw.replace(fmMatch[0], `---\n${updatedFm.trim()}\n---`);
+  let updatedRaw = raw.replace(fmMatch[0], `---\n${updatedFm.trim()}\n---`);
+  if (arch === "setup") {
+    updatedRaw = updatedRaw.replace(/Implementar \(`implement`\)/g, "Estructura de proyecto (`project_structure`)");
+    updatedRaw = updatedRaw.replace(/"skill":"implement"/g, '"skill":"project_structure"');
+  }
 
   console.log(`[${arch.toUpperCase()}] ${title}`);
   console.log(`  Old: ${skillsLine.trim()}`);

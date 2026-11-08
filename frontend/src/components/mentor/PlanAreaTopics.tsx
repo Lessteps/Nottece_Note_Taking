@@ -206,6 +206,7 @@ const OUTDATED_KINDS = [
   { key: "theory", what: "theory", label: "Nota", full: "la nota de teoría" },
   { key: "canvas", what: "map", label: "Mapa", full: "el mapa" },
   { key: "practica", what: "practice", label: ".practica", full: "el manifiesto .practica" },
+  { key: "exercises", what: "exercises", label: "Ejercicios", full: "los ejercicios" },
 ] as const;
 
 /** Botones verdes junto al tema: la skill cambió después de generar esa pieza. Pulsar pide confirmar y regenera (con copia de seguridad). */
@@ -215,7 +216,7 @@ function OutdatedButtons({ row, busy, onAsk }: { row: AreaTopicRow; busy: boolea
   if (list.length === 0 && !ex) return null;
   return (
     <span className="mt-1 flex flex-wrap gap-1" data-testid="outdated-buttons">
-      {ex && (() => {
+      {ex && !row.outdated?.exercises && (() => {
         const why = busy ? "Hay una regeneración en curso." : regenBlockedReason(row, ex.what);
         return (
           <button
@@ -224,7 +225,7 @@ function OutdatedButtons({ row, busy, onAsk }: { row: AreaTopicRow; busy: boolea
             onClick={() => onAsk(ex.what, row)}
             title={why || ex.title}
             aria-label={`Generar los ejercicios de ${row.title}: ${ex.title}`}
-            data-testid="outdated-exercises"
+            data-testid="outdated-exercises-gap"
             className="inline-flex min-h-7 items-center gap-1 rounded-md border border-mint bg-mint/15 px-2 text-[12.5px] font-medium text-mint hover:bg-mint/25 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Plus size={12} aria-hidden /> Ejercicios{ex.missing > 0 && row.exercises > 0 ? ` (+${ex.missing})` : ""}

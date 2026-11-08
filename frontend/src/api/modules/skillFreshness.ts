@@ -14,6 +14,7 @@ import path from "node:path";
 import { isHeavyNote } from "../../lib/noteWeight.js";
 import { shortVersion, stampOf, withStamp } from "../../lib/skillStamp.js";
 import type { OutdatedSkills } from "../../lib/planTopicCatalog.js";
+import { archetypeOf, ARCHETYPE_FORBIDDEN } from "../../core/practice/programmingArchetype.js";
 
 const SKILL_FILES = { theory: "resumen_teorico_skill.md", canvas: "mapa_skill.md", practica: "practica_skill.md" } as const;
 type Kind = keyof typeof SKILL_FILES;
@@ -170,6 +171,121 @@ function isProgrammingCanvasOutdated(rawCanvas: string, theoryStale: boolean): b
   }
 }
 
+export function isProgrammingPracticaOutdated(rawPractica: string, topicTitle: string): boolean {
+  if (!rawPractica) return true;
+  const fmMatch = /^---\r?\n([\s\S]*?)\r?\n---/.exec(rawPractica);
+  if (!fmMatch) return true;
+  const fm = fmMatch[1]!;
+
+  const typeMatch = /^topic_type:\s*(\w+)/m.exec(fm);
+  const topicType = typeMatch ? typeMatch[1] : undefined;
+  const arch = archetypeOf({ title: topicTitle, topicType });
+
+  const skillsMatch = /^skills:\s*\[(.*?)\]/m.exec(fm);
+  const skills = skillsMatch
+    ? skillsMatch[1]!.split(",").map((s) => s.trim().replace(/^["']|["']$/g, "")).filter(Boolean)
+    : [];
+
+  const planMatch = /^plan:\s*"?([^"\r\n]+)"?/m.exec(fm);
+  const planStr = planMatch ? planMatch[1]! : "";
+
+  const forbidden = new Set(ARCHETYPE_FORBIDDEN[arch]);
+  if (skills.some((s) => forbidden.has(s))) return true;
+  if ([...forbidden].some((f) => planStr.includes(`${f}=`))) return true;
+
+  if (arch === "setup") {
+    if (!skills.includes("project_structure") && !skills.includes("commands")) return true;
+  } else if (arch === "concept") {
+    if (topicType !== "theoretical") return true;
+    if (!skills.includes("pg_quiz") && !skills.includes("pg_true_false")) return true;
+  }
+
+  return false;
+}
+
+export function isProgrammingExercisesOutdated(
+  root: string,
+  folder: string,
+  topicTitle: string,
+  practicaSkills?: string[],
+  practicaChangedAt?: number,
+): boolean {
+  const ejDir = path.join(root, folder, "Ejercicios");
+  if (!fs.existsSync(ejDir)) return false;
+
+  let subdirs: string[] = [];
+  try {
+    subdirs = fs.readdirSync(ejDir, { withFileTypes: true })
+      .filter((d) => d.isDirectory() && !d.name.startsWith("."))
+      .map((d) => d.name);
+  } catch {
+    return false;
+  }
+
+  if (subdirs.length === 0) return false;
+
+  const arch = archetypeOf({ title: topicTitle });
+  const forbidden = new Set(ARCHETYPE_FORBIDDEN[arch]);
+
+  // Si hay alguna carpeta de habilidad prohibida con archivos .md
+  for (const s of subdirs) {
+    if (forbidden.has(s)) {
+      try {
+        const files = fs.readdirSync(path.join(ejDir, s)).filter((f) => f.endsWith(".md"));
+        if (files.length > 0) return true;
+      } catch {}
+    }
+  }
+
+  // En setup: si existen ejercicios, pero ninguno de estructura ni comandos
+  if (arch === "setup") {
+    const hasSetupEx = ["project_structure", "commands"].some((s) => {
+      try {
+        const p = path.join(ejDir, s);
+        return fs.existsSync(p) && fs.readdirSync(p).some((f) => f.endsWith(".md"));
+      } catch {
+        return false;
+      }
+    });
+    const totalEx = subdirs.reduce((acc, s) => {
+      try {
+        return acc + fs.readdirSync(path.join(ejDir, s)).filter((f) => f.endsWith(".md")).length;
+      } catch {
+        return acc;
+      }
+    }, 0);
+    if (totalEx > 0 && !hasSetupEx) return true;
+  }
+
+  // Si tenemos lista de habilidades del .practica actual, comprobar si hay ejercicios fuera de ellas
+  if (practicaSkills && practicaSkills.length > 0) {
+    const allowed = new Set(practicaSkills);
+    for (const s of subdirs) {
+      if (!allowed.has(s)) {
+        try {
+          const files = fs.readdirSync(path.join(ejDir, s)).filter((f) => f.endsWith(".md"));
+          if (files.length > 0) return true;
+        } catch {}
+      }
+    }
+  }
+
+  // Comprobar si los archivos de ejercicios son más viejos que la última edición de la skill de práctica
+  if (practicaChangedAt) {
+    for (const s of subdirs) {
+      try {
+        const files = fs.readdirSync(path.join(ejDir, s)).filter((f) => f.endsWith(".md"));
+        for (const f of files) {
+          const m = mtime(path.join(ejDir, s, f));
+          if (m !== null && m < practicaChangedAt) return true;
+        }
+      } catch {}
+    }
+  }
+
+  return false;
+}
+
 /** Para cada carpeta de tema (relativa a la vault), qué piezas existen pero son más viejas que su skill o tienen formato desactualizado. */
 export function outdatedByFolder(root: string, folders: Iterable<string>): Map<string, OutdatedSkills> {
   const list = [...folders];
@@ -218,9 +334,29 @@ export function outdatedByFolder(root: string, folders: Iterable<string>): Map<s
           stale.canvas = true;
         }
       }
+      const prPath = path.join(root, folder, pieces.practica);
+      let practicaSkills: string[] | undefined;
+      if (fs.existsSync(prPath)) {
+        try {
+          const rawPr = fs.readFileSync(prPath, "utf8");
+          if (isProgrammingPracticaOutdated(rawPr, name)) {
+            stale.practica = true;
+          }
+          const m = /skills:\s*\[(.*?)\]/.exec(rawPr);
+          if (m) {
+            practicaSkills = m[1]!.split(",").map((s) => s.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
+          }
+        } catch {
+          stale.practica = true;
+        }
+      }
+      const practicaChangedAt = times.get(`${subject}/practica`);
+      if (isProgrammingExercisesOutdated(root, folder, name, practicaSkills, practicaChangedAt)) {
+        stale.exercises = true;
+      }
     }
 
-    if (stale.theory || stale.canvas || stale.practica) out.set(folder, stale);
+    if (stale.theory || stale.canvas || stale.practica || stale.exercises) out.set(folder, stale);
   }
   return out;
 }

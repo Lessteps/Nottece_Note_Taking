@@ -38,7 +38,7 @@ export const ARCHETYPE_SKILLS: Record<PracticeArchetype, readonly string[]> = {
 /** Skills that make no sense for an archetype (they are removed from plans and manifests). */
 export const ARCHETYPE_FORBIDDEN: Record<PracticeArchetype, readonly string[]> = {
   concept: ["implement", "trace", "debug", "refactor", "test", "review", "analyze", "port", "cloze", "drill", "query", "design", "decompose", "commands", "project_structure"],
-  setup: ["trace", "debug", "refactor", "test", "review", "analyze", "port", "drill", "decompose"],
+  setup: ["implement", "trace", "debug", "refactor", "test", "review", "analyze", "port", "drill", "decompose"],
   early_code: ["refactor", "review", "test", "design", "port", "analyze"],
   code: [],
 };
