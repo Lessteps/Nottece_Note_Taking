@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { exercisesGap } from "./topicSelection";
+import { exercisesGap, isOutdated, matchesStatus, STATUS_FILTERS } from "./topicSelection";
 import type { AreaTopicRow } from "./planAreaTopics";
 
 function mockRow(partial: Partial<AreaTopicRow>): AreaTopicRow {
@@ -56,6 +56,30 @@ describe("exercisesGap", () => {
     expect(exercisesGap(mockRow({ exists: false }))).toBeNull();
     expect(exercisesGap(mockRow({ route: "skipped" }))).toBeNull();
     expect(exercisesGap(mockRow({ theory: false }))).toBeNull();
+  });
+});
+
+describe("isOutdated and STATUS_FILTERS", () => {
+  it("includes 'outdated' with label 'Desactualizados' in STATUS_FILTERS", () => {
+    const item = STATUS_FILTERS.find((f) => f.key === "outdated");
+    expect(item).toBeDefined();
+    expect(item?.label).toBe("Desactualizados");
+  });
+
+  it("isOutdated correctly detects outdated pieces", () => {
+    expect(isOutdated(mockRow({}))).toBe(false);
+    expect(isOutdated(mockRow({ outdated: {} }))).toBe(false);
+    expect(isOutdated(mockRow({ outdated: { theory: true } }))).toBe(true);
+    expect(isOutdated(mockRow({ outdated: { canvas: true } }))).toBe(true);
+    expect(isOutdated(mockRow({ outdated: { practica: true } }))).toBe(true);
+    expect(isOutdated(mockRow({ outdated: { exercises: true } }))).toBe(true);
+  });
+
+  it("matchesStatus filters by outdated", () => {
+    const fresh = mockRow({});
+    const stale = mockRow({ outdated: { exercises: true } });
+    expect(matchesStatus(fresh, "outdated")).toBe(false);
+    expect(matchesStatus(stale, "outdated")).toBe(true);
   });
 });
 

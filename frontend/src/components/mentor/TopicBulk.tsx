@@ -127,7 +127,7 @@ const CHECKS: ReadonlyArray<{ part: RegenPart; text: string; hint: string }> = [
   { part: "exercises", text: "Ejercicios", hint: "Las preguntas, a partir de la práctica." },
 ];
 
-export type SelectHelper = "all" | "missing" | "noExercises" | "clear";
+export type SelectHelper = "all" | "missing" | "noExercises" | "outdated" | "clear";
 
 /** Barra de acciones sobre la tabla: siempre visible; sin selección, con los botones desactivados y una pista. */
 export function BulkToolbar({ count, busy, onAsk, onGenerateMissing, onHelper, groups, onMoveGroup }: {
@@ -152,6 +152,7 @@ export function BulkToolbar({ count, busy, onAsk, onGenerateMissing, onHelper, g
     { key: "all", text: "Seleccionar todos" },
     { key: "missing", text: "Solo los que faltan" },
     { key: "noExercises", text: "Solo sin ejercicios" },
+    { key: "outdated", text: "Solo desactualizados" },
     { key: "clear", text: "Limpiar" },
   ];
   return (

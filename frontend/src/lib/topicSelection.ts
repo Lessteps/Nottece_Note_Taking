@@ -3,7 +3,7 @@
 
 import type { AreaTopicRow } from "./planAreaTopics";
 
-export type StatusFilter = "all" | "noTheory" | "noMap" | "noPractice" | "noExercises" | "complete";
+export type StatusFilter = "all" | "noTheory" | "noMap" | "noPractice" | "noExercises" | "outdated" | "complete";
 export type RegenPart = "theory" | "map" | "practice" | "exercises";
 /** Una pieza, «todo» o una combinación de piezas con IA (teoría + práctica…): lo que marcan las casillas de la barra. */
 export type RegenKind = RegenPart | "all" | "theory+practice" | "theory+exercises" | "practice+exercises";
@@ -33,11 +33,15 @@ export const STATUS_FILTERS: ReadonlyArray<{ key: StatusFilter; label: string }>
   { key: "noMap", label: "Falta mapa" },
   { key: "noPractice", label: "Falta práctica" },
   { key: "noExercises", label: "Falta ejercicios" },
+  { key: "outdated", label: "Desactualizados" },
   { key: "complete", label: "Completo" },
 ];
 
 /** ¿Tiene el tema todo lo que se puede generar (nota, mapa, .practica y ejercicios)? */
 export const isComplete = (r: AreaTopicRow): boolean => r.theory && r.canvas && r.manifest && r.exercises > 0;
+
+/** ¿Tiene el tema alguna pieza desactualizada según su skill (nota, mapa, .practica o ejercicios)? */
+export const isOutdated = (r: AreaTopicRow): boolean => Boolean(r.outdated && Object.values(r.outdated).some(Boolean));
 
 export function matchesStatus(r: AreaTopicRow, f: StatusFilter): boolean {
   switch (f) {
@@ -45,6 +49,7 @@ export function matchesStatus(r: AreaTopicRow, f: StatusFilter): boolean {
     case "noMap": return !r.canvas;
     case "noPractice": return !r.manifest;
     case "noExercises": return r.exercises === 0;
+    case "outdated": return isOutdated(r);
     case "complete": return isComplete(r);
     default: return true;
   }

@@ -28,10 +28,10 @@ const row = (n: string, over: Partial<PlanTopicRow> = {}): PlanTopicRow => ({
   folder: F(n), title: n, branch: "Backend", inPlan: true, exists: true, topicType: "unknown", theory: true, contract: true, canvas: true,
   manifest: true, skills: 3, exercises: 5, score: 100, complete: true, gaps: 0, ...over,
 });
-// A completo · B sin mapa · C sin ejercicios · D sin nada (ni nota)
+// A completo · B sin mapa y desactualizado · C sin ejercicios · D sin nada (ni nota)
 const ROWS = [
   row("A"),
-  row("B", { canvas: false, complete: false }),
+  row("B", { canvas: false, complete: false, outdated: { theory: true } }),
   row("C", { exercises: 0, complete: false }),
   row("D", { theory: false, canvas: false, manifest: false, exercises: 0, complete: false }),
 ];
@@ -115,6 +115,8 @@ describe("Temas por área — selección y filtro", () => {
     await click("status-filter-noExercises");
     expect(rows()).toEqual(["C", "D"]); // B ya no se ve, así que ya no cuenta
     expect(byTest("bulk-count")!.textContent).toBe("1 tema seleccionado");
+    await click("status-filter-outdated");
+    expect(rows()).toEqual(["B"]);
     await click("status-filter-complete");
     expect(rows()).toEqual(["A"]);
     await click("status-filter-noTheory");
@@ -123,13 +125,15 @@ describe("Temas por área — selección y filtro", () => {
     expect(rows()).toEqual(["A", "B", "C", "D"]);
   });
 
-  it("el menú de selección: todos, solo los que faltan, solo sin ejercicios y limpiar", async () => {
+  it("el menú de selección: todos, solo los que faltan, solo sin ejercicios, solo desactualizados y limpiar", async () => {
     await mount();
     const pick = async (k: string) => { await click("bulk-select-menu"); await click(`sel-${k}`); };
     await pick("missing");
     expect(byTest("bulk-count")!.textContent).toBe("3 temas seleccionados"); // B, C, D
     await pick("noExercises");
     expect(byTest("bulk-count")!.textContent).toBe("2 temas seleccionados"); // C, D
+    await pick("outdated");
+    expect(byTest("bulk-count")!.textContent).toBe("1 tema seleccionado"); // B
     await pick("all");
     expect(byTest("bulk-count")!.textContent).toBe("4 temas seleccionados");
     await pick("clear");
@@ -310,6 +314,9 @@ describe("topicSelection (puro)", () => {
     expect(matchesStatus(r({ manifest: false }), "noPractice")).toBe(true);
     expect(matchesStatus(r({ exercises: 0 }), "noExercises")).toBe(true);
     expect(matchesStatus(r({ theory: false }), "noTheory")).toBe(true);
+    expect(matchesStatus(r({ outdated: { theory: true } }), "outdated")).toBe(true);
+    expect(matchesStatus(r(), "outdated")).toBe(false);
+    expect(matchesStatus(r({ outdated: {} }), "outdated")).toBe(false);
   });
   it("estimación de llamadas: el mapa no usa IA; «todo» suma", () => {
     expect(estimateAiCalls(r(), "map")).toBe(0);

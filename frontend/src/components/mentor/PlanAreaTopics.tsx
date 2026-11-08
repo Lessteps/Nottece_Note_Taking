@@ -13,7 +13,7 @@
 import { Check, ChevronDown, ChevronLeft, ChevronRight, Edit3, Plus, RefreshCw, Sparkles, Trash2, X } from "lucide-react";
 import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { api } from "../../lib/bridge";
-import { exercisesGap, matchesStatus, planBulk, regenBlockedReason, STATUS_FILTERS, type BulkPlan, type RegenKind, type StatusFilter } from "../../lib/topicSelection";
+import { exercisesGap, isOutdated, matchesStatus, planBulk, regenBlockedReason, STATUS_FILTERS, type BulkPlan, type RegenKind, type StatusFilter } from "../../lib/topicSelection";
 import { useApp } from "../../store/app";
 import { useMentor } from "../../store/mentor";
 import { useNavState } from "../../store/navState";
@@ -370,7 +370,7 @@ export function PlanAreaTopics({ plan, schedule, today, started, progress, only 
   }, [group, groupId]);
 
   // lo que se ve (tras el filtro por estado); la selección y las acciones en lote solo cuentan lo que se ve
-  const outdatedCount = useMemo(() => areaRows.filter((r) => r.outdated).length, [areaRows]);
+  const outdatedCount = useMemo(() => areaRows.filter(isOutdated).length, [areaRows]);
   const visible = useMemo(() => shown.filter((r) => matchesStatus(r, statusFilter)), [shown, statusFilter]);
   const selectedRows = useMemo(() => visible.filter((r) => selected.has(r.folder)), [visible, selected]);
   const allOn = visible.length > 0 && selectedRows.length === visible.length;
@@ -401,6 +401,7 @@ export function PlanAreaTopics({ plan, schedule, today, started, progress, only 
     if (h === "clear") setSelected(new Set());
     else if (h === "all") setSelected(new Set(visible.map((r) => r.folder)));
     else if (h === "missing") setSelected(new Set(visible.filter(pendingGenerate).map((r) => r.folder)));
+    else if (h === "outdated") setSelected(new Set(visible.filter(isOutdated).map((r) => r.folder)));
     else setSelected(new Set(visible.filter((r) => r.exercises === 0).map((r) => r.folder)));
   };
   const [alsoMap, setAlsoMap] = useState(false);
@@ -680,6 +681,7 @@ export function PlanAreaTopics({ plan, schedule, today, started, progress, only 
                 <span className="text-[13px] text-dim">Estado:</span>
                 {STATUS_FILTERS.map((f) => {
                   const on = statusFilter === f.key;
+                  const count = statusCounts.get(f.key) ?? 0;
                   return (
                     <button
                       key={f.key}
@@ -687,9 +689,13 @@ export function PlanAreaTopics({ plan, schedule, today, started, progress, only 
                       aria-pressed={on}
                       onClick={() => setStatusFilter(f.key)}
                       data-testid={`status-filter-${f.key}`}
-                      className={cn("inline-flex min-h-8 items-center gap-1 rounded-lg border px-2.5 text-[13px] transition-colors", on ? "border-accent bg-accent-soft text-accent-text" : "border-line text-dim hover:bg-hover hover:text-text")}
+                      className={cn(
+                        "inline-flex min-h-8 items-center gap-1 rounded-lg border px-2.5 text-[13px] transition-colors",
+                        on ? "border-accent bg-accent-soft text-accent-text" : "border-line text-dim hover:bg-hover hover:text-text",
+                        !on && f.key === "outdated" && count > 0 && "border-mint/40 text-mint hover:bg-mint/10",
+                      )}
                     >
-                      {f.label} <span className="rounded bg-hover px-1 text-[11.5px] tabular-nums">{statusCounts.get(f.key) ?? 0}</span>
+                      {f.label} <span className={cn("rounded bg-hover px-1 text-[11.5px] tabular-nums", !on && f.key === "outdated" && count > 0 && "bg-mint/20 text-mint font-medium")}>{count}</span>
                     </button>
                   );
                 })}
