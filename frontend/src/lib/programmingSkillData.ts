@@ -119,7 +119,7 @@ export const PROGRAMMING_EXTRA_SKILLS: readonly ProgrammingSkillSpec[] = [
   {
     id: "project_structure",
     label: "Estructura de proyecto y entorno",
-    description: "Recrear o reparar la estructura real de un proyecto (carpetas, configuración, entorno virtual) y los comandos para montarlo.",
+    description: "Recrear o reparar la estructura real de un proyecto (carpetas, configuración, entorno) y los comandos para montarlo.",
     act: "Describe a small realistic project (a CLI script, a tiny API, a package with tests) and ask the learner to BUILD its layout: the folder/file tree (one path per line, folders end with `/`, e.g. `pyproject.toml`, `.venv/`, `src/app/__init__.py`, `src/app/main.py`, `tests/test_main.py`), the setup commands in order (create and activate the environment, install, run) and, when relevant, the import line that works from a given file. Variants: repair a broken tree, say which files must NOT be committed, or decide where a new module goes. Never ask to trace, debug or refactor a program.",
     judge: "The tree has every required piece in the right place (package folders with `__init__.py` when needed, config at the root, tests apart, the environment folder excluded from version control), the commands are correct and in a working order for the stated OS, and the imports resolve from where the code runs. Extra noise files or a wrong root lose points.",
     answerKind: "text",

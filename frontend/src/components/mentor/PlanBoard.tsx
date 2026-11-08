@@ -128,35 +128,37 @@ export function TopicRow({ r, colour, areaKey, planId }: { r: BoardRow; colour: 
         // pulsar el tema abre sus opciones: apunte (.md), archivo de práctica, canvas, Pomodoro y planeación
         return locked ? <span className={cls}>{label}</span> : <span className={cls}><TopicMenu folder={r.folder} title={r.title} trigger={label} {...(r.work ? { work: r.work } : {})} {...(areaKey ? { areaKey } : {})} planId={planId} className="w-full rounded-md hover:text-accent-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent" /></span>;
       })()}
-      {r.extra && <ExtraTag title={r.title} {...(r.extra.remove ? { onRemove: r.extra.remove } : {})} />}
-      {r.time && <TimeChip time={r.time} />}
-      {!locked && <TopicNoteLinks folder={r.folder} title={r.title} />}
-      {!r.done && !locked && (r.pct ?? 0) > 0 && (
-        <span className="flex-none font-mono text-[12px] text-dim" data-testid="board-pct" title="Nivel de avance del tema">{r.pct} %</span>
-      )}
-      {r.tag && (
-        <span className="flex-none rounded-md border px-1.5 py-0.5 font-mono text-[11px] font-semibold uppercase tracking-wide" style={{ color: r.tag.colour ?? colour, borderColor: `${r.tag.colour ?? colour}66`, background: `${r.tag.colour ?? colour}1a` }} data-testid="board-tag">
-          {r.tag.text}
-        </span>
-      )}
-      {assigned && (
-        <span className="flex-none flex items-center gap-1 rounded-md border border-warn/60 bg-warn-soft px-1.5 py-0.5 font-mono text-[11px] font-semibold text-warn uppercase tracking-wide">
-          <Timer size={11} aria-hidden /> Pomodoro
-        </span>
-      )}
-      {working && !r.tag && !assigned && (
-        <span className="flex-none rounded-md border px-1.5 py-0.5 font-mono text-[11px] font-semibold uppercase tracking-wide" style={{ color: colour, borderColor: `${colour}66`, background: `${colour}1a` }}>
-          {r.state === "practicando" ? "Activo" : STATE_LABEL[r.state]}
-        </span>
-      )}
-      {locked ? (
-        <span className="flex-none text-[12.5px] text-faint" title={`Termina antes los temas del ${dateLabel(r.unlockOn!)}`}>
-          <span className="sr-only">Bloqueado</span>
-          <Lock size={14} aria-hidden />
-        </span>
-      ) : (
-        <TopicMenu folder={r.folder} title={r.title} {...(r.work ? { work: r.work } : {})} {...(areaKey ? { areaKey } : {})} planId={planId} />
-      )}
+      <div className="ml-auto flex flex-wrap items-center gap-2">
+        {r.extra && <ExtraTag title={r.title} {...(r.extra.remove ? { onRemove: r.extra.remove } : {})} />}
+        {r.time && <TimeChip time={r.time} />}
+        {!locked && <TopicNoteLinks folder={r.folder} title={r.title} />}
+        {!r.done && !locked && (r.pct ?? 0) > 0 && (
+          <span className="flex-none font-mono text-[12px] text-dim" data-testid="board-pct" title="Nivel de avance del tema">{r.pct} %</span>
+        )}
+        {r.tag && (
+          <span className="flex-none rounded-md border px-1.5 py-0.5 font-mono text-[11px] font-semibold uppercase tracking-wide" style={{ color: r.tag.colour ?? colour, borderColor: `${r.tag.colour ?? colour}66`, background: `${r.tag.colour ?? colour}1a` }} data-testid="board-tag">
+            {r.tag.text}
+          </span>
+        )}
+        {assigned && (
+          <span className="flex-none flex items-center gap-1 rounded-md border border-warn/60 bg-warn-soft px-1.5 py-0.5 font-mono text-[11px] font-semibold text-warn uppercase tracking-wide">
+            <Timer size={11} aria-hidden /> Pomodoro
+          </span>
+        )}
+        {working && !r.tag && !assigned && (
+          <span className="flex-none rounded-md border px-1.5 py-0.5 font-mono text-[11px] font-semibold uppercase tracking-wide" style={{ color: colour, borderColor: `${colour}66`, background: `${colour}1a` }}>
+            {r.state === "practicando" ? "Activo" : STATE_LABEL[r.state]}
+          </span>
+        )}
+        {locked ? (
+          <span className="flex-none text-[12.5px] text-faint" title={`Termina antes los temas del ${dateLabel(r.unlockOn!)}`}>
+            <span className="sr-only">Bloqueado</span>
+            <Lock size={14} aria-hidden />
+          </span>
+        ) : (
+          <TopicMenu folder={r.folder} title={r.title} {...(r.work ? { work: r.work } : {})} {...(areaKey ? { areaKey } : {})} planId={planId} />
+        )}
+      </div>
       {insight && !locked && (
         <div id={insightId} className="basis-full pb-1 pl-8" data-testid="board-topic-insight">
           <TopicInsight folder={r.folder} title={r.title} {...(planId ? { planId } : {})} compact />
