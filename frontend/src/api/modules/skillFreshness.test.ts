@@ -172,3 +172,33 @@ describe("arquetipos de programación: practica y ejercicios desactualizados", (
     expect(out.get(SETUP)?.exercises).toBeFalsy();
   });
 });
+
+describe("verificación universal de notas y lienzos (múltiples materias y formatos)", () => {
+  it("detecta notas truncadas por bloque de código sin cerrar", async () => {
+    const { isTheoryOutdated } = await import("./skillFreshness.js");
+    const unclosed = `# 1.1 X\n\n## Requires\n*No prerequisites.*\n\n## Explanation\n### What it is\n**In one sentence.** x\n\n\`\`\`python\nprint("cut off midway")\n`;
+    expect(isTheoryOutdated(unclosed, "Programación")).toBe(true);
+  });
+
+  it("detecta notas a las que les falta una sección requerida como ejemplos o errores", async () => {
+    const { isTheoryOutdated } = await import("./skillFreshness.js");
+    const noMistakes = `# 1.1 X\n\n## Requires\n*No prerequisites.*\n\n## Explanation\n### What it is\n**In one sentence.** x\n\n## Examples\n**How you will apply it:** x\n`;
+    expect(isTheoryOutdated(noMistakes, "Programación")).toBe(true);
+  });
+
+  it("valida notas en español para Matemáticas e Inglés", async () => {
+    const { isTheoryOutdated } = await import("./skillFreshness.js");
+    const mathValid = `# 1.1 Suma\n\n## Requiere\n*Sin prerrequisitos.*\n\n## Explicación\n### Qué es\nDefinición.\n### Modelo mental\nAnalogía.\n\n## Ejemplos\nEjemplo 1.\n\n## Errores comunes\nError 1.\n`;
+    expect(isTheoryOutdated(mathValid, "Matemáticas")).toBe(false);
+
+    const mathMissingModel = `# 1.1 Suma\n\n## Requiere\n*Sin prerrequisitos.*\n\n## Explicación\n### Qué es\nDefinición.\n\n## Ejemplos\nEjemplo 1.\n\n## Errores comunes\nError 1.\n`;
+    expect(isTheoryOutdated(mathMissingModel, "Matemáticas")).toBe(true);
+  });
+
+  it("detecta lienzos explicativos vacíos o sin nodos ni explicación", async () => {
+    const { isCanvasOutdated } = await import("./skillFreshness.js");
+    expect(isCanvasOutdated("", false)).toBe(true);
+    expect(isCanvasOutdated(JSON.stringify({ nodes: [] }), false)).toBe(true);
+    expect(isCanvasOutdated(JSON.stringify({ nodes: [{ id: "1", type: "text", text: "solo esto" }] }), false)).toBe(true);
+  });
+});
