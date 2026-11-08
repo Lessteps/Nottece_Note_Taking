@@ -330,10 +330,11 @@ export function PracticeView({ note }: { note: OpenNote }) {
   const canRun = !!ex.run_language && !["explain", "decompose", "commands"].includes(ex.mode.id) && (ex.mode.id !== "design" || ex.run_language === "sql");
   const clock = display(ex.timer, timer);
   const best = ex.history.length ? Math.max(...ex.history.map((h) => h.score)) : null;
+  const isProjectLab = ex.mode.id === "project_structure" || ex.mode.id === "commands";
 
   return (
     <div className="h-full overflow-y-auto nv-practice-view">
-      <div className="mx-auto flex max-w-[860px] flex-col gap-4 px-8 py-6">
+      <div className={cn("mx-auto flex flex-col gap-4 py-6 w-full", isProjectLab ? "max-w-7xl px-4 sm:px-6 lg:px-8" : "max-w-[860px] px-8")}>
         <header className="flex flex-wrap items-start gap-4">
           <div className="min-w-[15rem] flex-1">
             <h1 className="break-words text-[22px] font-bold tracking-tight text-text">{ex.title}</h1>
