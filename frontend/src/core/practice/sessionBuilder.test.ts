@@ -195,4 +195,32 @@ describe("Session Builder", () => {
     expect(session.exercises[1]?.isNew).toBe(true);
     expect(session.exercises[1]?.content).toContain("Inducción en desigualdades");
   });
+
+  it("creates deterministic fallback exercise when zero exist and AI generates nothing", async () => {
+    const aiEmpty: SessionAIClient = {
+      generateExercises: vi.fn().mockResolvedValue([]),
+    };
+
+    const session = await buildTopicSession(
+      sampleManifest,
+      "Matematicas/01 Induccion",
+      {
+        skill: "drill", // 0 exist in sampleExercises
+        difficulty: 1,
+        quantity: "3-5",
+        assistance: "helper",
+      },
+      sampleExercises,
+      [{ rel: "Matematicas/01 Induccion/01 Induccion.md", title: "01 Induccion", content: "El principio de inducción matemática consiste en..." }],
+      aiEmpty,
+    );
+
+    expect(session.existingCount).toBe(0);
+    expect(session.generatedCount).toBe(1);
+    expect(session.exercises.length).toBe(1);
+    expect(session.exercises[0]?.isNew).toBe(true);
+    expect(session.exercises[0]?.content).toContain("type: exercise");
+    expect(session.exercises[0]?.content).toContain("mode: drill");
+    expect(session.exercises[0]?.content).toContain("1.2 Inducción matemática");
+  });
 });

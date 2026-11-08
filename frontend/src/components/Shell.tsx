@@ -257,7 +257,7 @@ export function TopBar() {
       <TabStrip />
 
       {/* Sync state + Pomodoro global + panel derecho + window controls on the right */}
-      <div className="flex flex-none items-center gap-2 border-l border-line px-2.5">
+      <div className="nv-no-drag flex flex-none items-center gap-2 border-l border-line px-2.5">
         <TopBarPomodoro />
         <SyncState />
         <RightPanelToggle />
@@ -283,7 +283,7 @@ function WorkspaceIcons() {
     <button
       type="button"
       title="Panel lateral izquierdo (Ctrl+\)"
-      aria-label="Panel lateral izquierdo"
+      aria-label="Panel lateral"
       aria-pressed={explorerOpen}
       onClick={toggleExplorer}
       className={cn(
@@ -306,13 +306,16 @@ function RightPanelToggle() {
       title="Panel derecho (plegar / desplegar)"
       aria-label="Panel derecho"
       aria-pressed={rightPanelOpen}
-      onClick={toggleRightPanel}
+      onClick={(e) => {
+        e.stopPropagation();
+        toggleRightPanel();
+      }}
       className={cn(
-        "grid h-7 w-7 place-items-center rounded transition-colors hover:bg-hover",
+        "nv-no-drag grid h-7 w-7 place-items-center rounded transition-colors hover:bg-hover",
         rightPanelOpen ? "text-text" : "text-faint hover:text-text",
       )}
     >
-      <PanelRight size={15} strokeWidth={1.8} />
+      <PanelRight size={15} strokeWidth={1.8} className="pointer-events-none" />
     </button>
   );
 }
@@ -348,7 +351,7 @@ function WindowControls() {
   if (!electron) return null;
 
   return (
-    <div className="flex flex-none items-stretch border-l border-line">
+    <div className="nv-no-drag flex flex-none items-stretch border-l border-line">
       <button
         type="button"
         title="Minimizar"

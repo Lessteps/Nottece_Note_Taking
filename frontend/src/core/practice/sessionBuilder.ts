@@ -9,7 +9,7 @@ import { domainOfSubject, isEnglishSubject } from "./domain";
 import { buildProgrammingExercisePrompt, formatProgrammingExerciseNote } from "./programmingExercises";
 import { buildEnglishExercisePrompt, formatEnglishExerciseNote } from "./englishExercises";
 import type { ExerciseRef } from "./exerciseIndex";
-import { type AssistanceLevel, type DifficultyLevel, difficultyLabel } from "./skills";
+import { type AssistanceLevel, type DifficultyLevel, difficultyLabel, skillDefinition } from "./skills";
 import type { TopicManifest } from "./topic";
 
 export type QuantityOption = "3-5" | "6-10" | "11+" | "all" | "auto" | "ai";
@@ -248,6 +248,51 @@ function normaliseExercise(raw: any): GeneratedExercise | null {
   return { title, statement, hints: list(raw.hints), solution: String(raw.solution ?? ""), rubric: list(raw.rubric), ...(audio ? { audio_text: audio } : {}) };
 }
 
+/**
+ * Genera un ejercicio determinista sin depender de la IA a partir de la definición de la habilidad
+ * y el contenido de la nota de teoría, garantizando que el flujo de práctica nunca quede bloqueado.
+ */
+export function createFallbackExercise(
+  manifest: TopicManifest,
+  skill: string,
+  difficulty: DifficultyLevel,
+  assistance: AssistanceLevel,
+  theoryNotes: TheoryNoteContext[] = [],
+): GeneratedExercise {
+  const def = skillDefinition(manifest.subject, skill);
+  const title = `${def?.label || skill} — ${manifest.title}`;
+  const rawContent = theoryNotes[0]?.content || "";
+  const cleaned = rawContent
+    .replace(/^---[\s\S]*?---\s*/, "")
+    .replace(/^#+.*$/gm, "")
+    .trim();
+  const contextSnippet = cleaned.slice(0, 350).replace(/\n\s*\n/g, "\n");
+
+  const diffLabel = difficulty === 1 ? "básica" : difficulty === 2 ? "media" : "avanzada";
+  let statement = def?.act
+    ? `${def.act}\n\nAplica este principio a nivel de dificultad ${diffLabel} sobre los conceptos estudiados en «${manifest.title}»:`
+    : `Realiza la práctica de ${def?.label || skill} (dificultad ${diffLabel}) sobre el tema ${manifest.title}.`;
+  if (contextSnippet) {
+    statement += `\n\n> Contexto de referencia:\n> ${contextSnippet.replace(/\n/g, "\n> ")}`;
+  }
+
+  const hints = [
+    `Revisa la sección principal de la nota de teoría de ${manifest.title}.`,
+    def?.description ? `Ten en cuenta: ${def.description}` : "Aplica los conceptos del tema paso a paso.",
+    ...(assistance === "helper" ? ["Desglosa el ejercicio identificando primero las entradas, las reglas de transformación y las salidas esperadas."] : []),
+  ];
+
+  const solution = `Aplica las reglas y principios explicados en la nota de teoría para resolver la actividad de ${def?.label || skill}.`;
+
+  const rubric = [
+    `Demuestra dominio de la competencia ${def?.label || skill}.`,
+    "Sigue las especificaciones del enunciado sin introducir malas prácticas.",
+    "Fundamenta la respuesta utilizando los conceptos de la teoría.",
+  ];
+
+  return { title, statement, hints, solution, rubric };
+}
+
 /** The top-level `{...}` chunks of a (possibly broken) JSON array text, string-aware. */
 function objectChunks(text: string): string[] {
   const out: string[] = [];
@@ -404,6 +449,30 @@ export async function buildTopicSession(
     } catch {
       // In case of AI error, proceed with existing exercises
     }
+  }
+
+  // Fallback determinista: si no hay ejercicios existentes y la IA no generó ninguno (modo puente/sin IA),
+  // la app construye autónomamente un ejercicio inicial estructurado a partir de la teoría y la definición de la skill.
+  if (planned.length === 0 && needed > 0) {
+    const fallbackEx = createFallbackExercise(manifest, config.skill, config.difficulty, config.assistance, theoryNotes);
+    const filename = `ej_${config.skill}_d${config.difficulty}_${Date.now()}_1.md`;
+    const folder = topicFolder ? topicFolder.replace(/\/$/, "") : "";
+    const skillDir = `Ejercicios/${config.skill}`;
+    const relPath = folder ? `${folder}/${skillDir}/${filename}` : `${skillDir}/${filename}`;
+    const content = formatExerciseNote(
+      manifest,
+      config.skill,
+      config.difficulty,
+      config.assistance,
+      fallbackEx,
+    );
+    planned.push({
+      id: filename.replace(/\.md$/, ""),
+      title: fallbackEx.title,
+      path: relPath,
+      isNew: true,
+      content,
+    });
   }
 
   return {
