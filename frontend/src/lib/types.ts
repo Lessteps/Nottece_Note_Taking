@@ -1105,6 +1105,8 @@ export interface TopicCellProgress {
   bestScore: number | null;
   /** passes this cell needs per the topic's plan (undefined without a plan) */
   required?: number;
+  /** exercise files that exist on disk for this cell */
+  exerciseCount?: number;
 }
 
 export interface TopicSkillProgress {

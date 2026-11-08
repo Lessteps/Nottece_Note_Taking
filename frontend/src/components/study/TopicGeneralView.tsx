@@ -269,6 +269,7 @@ export function TopicGeneralView({ topicData, snap, onOpenConfigurator, onPracti
                           </td>
                         );
                       }
+                      const missingOnDisk = manifest.plan && required > 0 && cell.exerciseCount !== undefined && cell.exerciseCount === 0;
                       return (
                         <td key={d} className="px-2 py-2.5">
                           <div
@@ -276,11 +277,17 @@ export function TopicGeneralView({ topicData, snap, onOpenConfigurator, onPracti
                               "mx-auto flex h-7 w-[76px] items-center justify-center rounded-md border font-mono text-[11px]",
                               cell.passes > 0
                                 ? "border-mint/40 bg-mint-soft text-mint"
-                                : cell.attempts > 0
-                                  ? "border-line bg-panel text-dim"
-                                  : "border-line bg-panel text-faint",
+                                : missingOnDisk
+                                  ? "border-warn/40 bg-warn/10 text-warn"
+                                  : cell.attempts > 0
+                                    ? "border-line bg-panel text-dim"
+                                    : "border-line bg-panel text-faint",
                             )}
-                            title={`${cell.passes} aprobados de ${cell.attempts} intentos. Mejor: ${cell.bestScore ?? "—"}`}
+                            title={
+                              missingOnDisk
+                                ? `Sin ejercicios generados en la vault (0 disponibles para ${required} planeados)`
+                                : `${cell.passes} aprobados de ${cell.attempts} intentos.${cell.exerciseCount !== undefined ? ` ${cell.exerciseCount} disponibles.` : ""} Mejor: ${cell.bestScore ?? "—"}`
+                            }
                           >
                             {cell.passes} / {required}
                           </div>

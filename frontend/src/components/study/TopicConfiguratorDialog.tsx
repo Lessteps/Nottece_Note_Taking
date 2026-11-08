@@ -1,4 +1,4 @@
-import { CheckCircle2, ChevronRight, Sparkles, X, Zap } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronRight, Sparkles, X, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../../lib/bridge";
 import type { TopicData } from "../../lib/types";
@@ -129,6 +129,8 @@ export function TopicConfiguratorDialog({
   // Inline current progress for selected skill & difficulty
   const skillProg = topicData.progress?.skills[selectedSkill];
   const cellProg = skillProg?.cells[difficulty];
+  const exercisesAvailable = cellProg?.exerciseCount;
+  const hasNoExercises = exercisesAvailable !== undefined && exercisesAvailable === 0;
 
   const handleStart = async () => {
     setLoading(true);
@@ -147,7 +149,7 @@ export function TopicConfiguratorDialog({
         onClose();
         toast("info", `Sesión iniciada: ${res.exercises.length} ejercicios listos.`);
       } else {
-        toast("error", "No se encontraron ni pudieron generar ejercicios para este tema.");
+        toast("error", "No se encontraron ejercicios en la vault para esta competencia. Usa «Generar lo que falta» o el asistente para crearlos.");
       }
     } catch (e) {
       toast("error", (e as Error).message);
@@ -291,9 +293,16 @@ export function TopicConfiguratorDialog({
                   >
                     <span className="text-[13px]">{d.label}</span>
                     <span className="mt-0.5 text-[10px] text-warn">{"★".repeat(d.level)}</span>
-                    {plan && allowed && (
-                      <span className="mt-0.5 font-mono text-[9.5px] text-faint">{plannedCount(selectedSkill, d.level)} ej. planeados</span>
-                    )}
+                    {plan && allowed && (() => {
+                      const count = skillProg?.cells[d.level]?.exerciseCount;
+                      const planned = plannedCount(selectedSkill, d.level);
+                      const missingOnDisk = count !== undefined && count === 0 && (planned ?? 0) > 0;
+                      return (
+                        <span className={cn("mt-0.5 font-mono text-[9.5px]", missingOnDisk ? "text-warn font-medium" : "text-faint")}>
+                          {missingOnDisk ? `0/${planned} creados` : `${planned} ej. planeados`}
+                        </span>
+                      );
+                    })()}
                     {!allowed && (
                       <span className={cn("mt-0.5 text-[9.5px]", unplanned ? "text-faint" : "text-danger")}>{unplanned ? "Fuera del plan" : "No disponible"}</span>
                     )}
@@ -423,7 +432,13 @@ export function TopicConfiguratorDialog({
         {/* Footer */}
         <div className="flex items-center justify-between border-t border-line bg-panel/50 px-6 py-4">
           <div className="text-[11.5px] text-faint">
-            Se priorizan ejercicios existentes; si faltan, la IA creará específicos del tema.
+            {hasNoExercises ? (
+              <span className="flex items-center gap-1.5 font-medium text-warn">
+                <AlertTriangle size={13} aria-hidden /> Sin ejercicios en la vault para esta competencia: créalos desde Mentor o con el asistente.
+              </span>
+            ) : (
+              "Se priorizan ejercicios existentes; si faltan, la IA creará específicos del tema."
+            )}
           </div>
           <div className="flex items-center gap-2">
             <button

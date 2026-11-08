@@ -37,8 +37,8 @@ export const STATUS_FILTERS: ReadonlyArray<{ key: StatusFilter; label: string }>
   { key: "complete", label: "Completo" },
 ];
 
-/** ¿Tiene el tema todo lo que se puede generar (nota, mapa, .practica y ejercicios)? */
-export const isComplete = (r: AreaTopicRow): boolean => r.theory && r.canvas && r.manifest && r.exercises > 0;
+/** ¿Tiene el tema todo lo que se puede generar (nota, mapa, .practica y ejercicios completos según el plan)? */
+export const isComplete = (r: AreaTopicRow): boolean => r.theory && r.canvas && r.manifest && r.exercises > 0 && exercisesGap(r) === null;
 
 /** ¿Tiene el tema alguna pieza desactualizada según su skill (nota, mapa, .practica o ejercicios)? */
 export const isOutdated = (r: AreaTopicRow): boolean => Boolean(r.outdated && Object.values(r.outdated).some(Boolean));
@@ -48,7 +48,7 @@ export function matchesStatus(r: AreaTopicRow, f: StatusFilter): boolean {
     case "noTheory": return !r.theory;
     case "noMap": return !r.canvas;
     case "noPractice": return !r.manifest;
-    case "noExercises": return r.exercises === 0;
+    case "noExercises": return r.exercises === 0 || exercisesGap(r) !== null;
     case "outdated": return isOutdated(r);
     case "complete": return isComplete(r);
     default: return true;

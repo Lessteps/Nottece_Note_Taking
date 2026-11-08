@@ -55,6 +55,8 @@ export interface TopicCellProgress {
   bestScore: number | null;
   /** passes this cell needs according to the topic's plan; undefined without a plan */
   required?: number;
+  /** exercise files that exist on disk for this cell */
+  exerciseCount?: number;
 }
 
 /** `solve=3/4/2, process=2/3/0` ⇄ the plan map. Unknown or empty entries are dropped. */
@@ -463,9 +465,9 @@ export function computeTopicProgress(
   for (const skillId of topic.skills) {
     const planned = topic.plan?.[skillId];
     const cells: Record<DifficultyLevel, TopicCellProgress> = {
-      1: { skill: skillId, difficulty: 1, attempts: 0, passes: 0, bestScore: null, ...(planned ? { required: planned[0] } : {}) },
-      2: { skill: skillId, difficulty: 2, attempts: 0, passes: 0, bestScore: null, ...(planned ? { required: planned[1] } : {}) },
-      3: { skill: skillId, difficulty: 3, attempts: 0, passes: 0, bestScore: null, ...(planned ? { required: planned[2] } : {}) },
+      1: { skill: skillId, difficulty: 1, attempts: 0, passes: 0, bestScore: null, exerciseCount: 0, ...(planned ? { required: planned[0] } : {}) },
+      2: { skill: skillId, difficulty: 2, attempts: 0, passes: 0, bestScore: null, exerciseCount: 0, ...(planned ? { required: planned[1] } : {}) },
+      3: { skill: skillId, difficulty: 3, attempts: 0, passes: 0, bestScore: null, exerciseCount: 0, ...(planned ? { required: planned[2] } : {}) },
     };
 
     let totalAttempts = 0;
@@ -481,6 +483,7 @@ export function computeTopicProgress(
     for (const ex of matchingExercises) {
       const diff = Math.min(3, Math.max(1, ex.difficulty)) as DifficultyLevel;
       const cell = cells[diff];
+      cell.exerciseCount = (cell.exerciseCount ?? 0) + 1;
       const exEntry = attempts[ex.note_id];
       const exAttempts = Array.isArray(exEntry) ? exEntry : exEntry?.attempts || [];
 
