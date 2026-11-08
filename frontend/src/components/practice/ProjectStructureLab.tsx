@@ -18,6 +18,8 @@ import {
   Circle,
   ListChecks,
   Code2,
+  Package,
+  Lightbulb,
 } from "lucide-react";
 import { cn } from "../ui";
 
@@ -301,7 +303,9 @@ export function ProjectStructureLab({
       {/* Notion Page Header Block */}
       <div className="flex items-center justify-between border-b border-line pb-3">
         <div className="flex items-center gap-2.5">
-          <span className="text-2xl select-none">📦</span>
+          <div className="flex h-9 w-9 flex-none items-center justify-center rounded-lg bg-accent-soft text-accent-text">
+            <Package size={20} aria-hidden />
+          </div>
           <div>
             <h2 className="text-[16px] font-semibold tracking-tight text-text">
               Laboratorio de Estructura de Proyecto y Entorno
@@ -320,7 +324,9 @@ export function ProjectStructureLab({
 
       {/* Notion Callout Box (Consolidated Context & Instructions) */}
       <div className="flex items-start gap-3 rounded-lg border border-border/80 bg-surface p-3.5 shadow-xs">
-        <div className="text-xl select-none pt-0.5">💡</div>
+        <div className="flex h-7 w-7 flex-none items-center justify-center rounded-md bg-warn/15 text-warn">
+          <Lightbulb size={16} aria-hidden />
+        </div>
         <div className="flex-1 space-y-2 text-[13px] text-text">
           <div className="flex items-center justify-between">
             <p className="font-semibold text-text">Requisitos del ejercicio:</p>
