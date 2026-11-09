@@ -352,7 +352,7 @@ export function practiceApi(app: AppState) {
       const messages = practiceMessages(app.root, ex, ans, hints, secs, seen);
       const cfg = aiCfg();
 
-      if (via === "handoff" || cfg.is_bridge) {
+      if (via === "handoff" || via === "bridge" || via === "prompt" || cfg.is_bridge) {
         const req = practiceRequest(app, p, ex, messages, ans, hints, secs, seen);
         const respPath = responsePath(app.root, req).replace(/\\/g, "/");
         const reqRel = `.notevault/estudio/handoff/requests/${req}.md`;
@@ -367,8 +367,8 @@ export function practiceApi(app: AppState) {
         if (via !== "handoff") {
           out.bridge = true;
           out.prompt = buildBridgePrompt(messages as any);
-          out.url = BRIDGE_URLS[cfg.provider] || "";
-          out.label = cfg.info.label;
+          out.url = BRIDGE_URLS[cfg.provider] || "https://chatgpt.com";
+          out.label = cfg.info?.label || "IA Web";
         }
         return out;
       }
@@ -378,7 +378,7 @@ export function practiceApi(app: AppState) {
         reply = await sendChat(cfg, messages as any);
       } catch (e: any) {
         throw new ApiError(
-          `No se pudo corregir: ${e instanceof AIError ? e.message : e.message || e}`,
+          `No se pudo corregir: ${e instanceof AIError ? e.message : e.message || e}. Si no tienes API key configurada, usa «Entregar con Prompt IA».`,
         );
       }
 

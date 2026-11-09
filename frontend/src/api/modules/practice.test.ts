@@ -257,6 +257,37 @@ Aislamiento de dependencias para el proyecto.
     expect(() => api.practice_reply("Impares.md", "../../x")).toThrow(ApiError);
   });
 
+  it("test_bridge_prompt_via_button_without_bridge_provider", async () => {
+    aiConfigData.provider = "openai";
+    const out = (await api.practice_grade(
+      "Impares.md",
+      "def solve(): pass",
+      0,
+      45,
+      false,
+      "bridge",
+    )) as Record<string, any>;
+
+    expect(out.graded).toBe(false);
+    expect(out.bridge).toBe(true);
+    expect(out.prompt).toContain("def solve(): pass");
+    expect(out.url).toBe("https://chatgpt.com");
+
+    const req = out.request as string;
+    const done = api.practice_reply(
+      "Impares.md",
+      req,
+      REPLY,
+    ) as Record<string, any>;
+    expect(done.result.score).toBe(80);
+
+    const attempts = new PracticeAttemptStore(tmpDir).attempts(
+      "mat.logica.induccion.e01",
+    );
+    expect(attempts).toHaveLength(1);
+    expect(attempts[0]!.transport).toBe("bridge");
+  });
+
   it("test_handoff_file_answered_by_an_agent", async () => {
     const out = (await api.practice_grade(
       "Impares.md",

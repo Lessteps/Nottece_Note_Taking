@@ -2,7 +2,7 @@
 // answer, hints, timer, AI grading and the attempt history.
 
 import {
-  BookOpen, Bug, ClipboardPaste, Eye, FileOutput, Lightbulb, Pause, Pencil, PenTool, Play, RotateCcw, Send, SlidersHorizontal, Timer, X,
+  BookOpen, Bug, ClipboardPaste, Eye, FileOutput, Lightbulb, Pause, Pencil, PenTool, Play, RotateCcw, Send, SlidersHorizontal, Sparkles, Timer, X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../lib/bridge";
@@ -18,6 +18,7 @@ import { AudioClip } from "./AudioClip";
 import { DrillPanel } from "./DrillPanel";
 import { ConceptQuizPanel } from "./ConceptQuizPanel";
 import { ProjectStructureLab } from "./ProjectStructureLab";
+import { PracticeCodeEditor } from "./PracticeCodeEditor";
 import { openInkPad, registerAnswerTarget } from "./inkBridge";
 import { beep, md, ResultCard } from "./common";
 
@@ -210,7 +211,14 @@ export function PracticeView({ note }: { note: OpenNote }) {
       return;
     }
     setBusy(true);
-    setStatus({ text: via === "handoff" ? "Escribiendo la solicitud…" : "Corrigiendo…" });
+    setStatus({
+      text:
+        via === "handoff"
+          ? "Escribiendo la solicitud…"
+          : via === "bridge" || via === "prompt"
+            ? "Generando prompt de corrección…"
+            : "Corrigiendo…",
+    });
     try {
       const r = await api.practiceGrade(rel, answer, hints, seconds(), solutionSeen, via);
       if (r.graded) finish(r);
@@ -219,7 +227,7 @@ export function PracticeView({ note }: { note: OpenNote }) {
         if (r.bridge && r.prompt) {
           await copyText(r.prompt);
           if (r.url) void api.openExternal(r.url).catch(() => undefined);
-          setStatus({ text: `Prompt de corrección copiado${r.url ? ` y abierta la web de ${r.label}` : ""}. Pégalo allí, copia la respuesta (el bloque JSON) y pulsa «Pegar corrección».` });
+          setStatus({ text: `Prompt de corrección copiado al portapapeles${r.url ? ` y abierta la web de ${r.label}` : ""}. Pégalo allí, copia la respuesta (el bloque JSON) y pulsa «Pegar corrección».` });
         } else {
           const invocation = `Corrige la solicitud de práctica de NoteVault que está en ${r.request_path}: sigue sus instrucciones y escribe solo el JSON de la corrección en ${r.response_file}.`;
           await copyText(invocation);
@@ -227,7 +235,10 @@ export function PracticeView({ note }: { note: OpenNote }) {
         }
       }
     } catch (e) {
-      setStatus({ text: `${(e as Error).message} Puedes reintentar o usar el archivo de intercambio.`, error: true });
+      setStatus({
+        text: `${(e as Error).message} Si no tienes API key configurada, puedes pulsar «Entregar con Prompt IA (sin API key)» o usar el archivo de intercambio.`,
+        error: true,
+      });
     } finally {
       setBusy(false);
     }
@@ -331,10 +342,16 @@ export function PracticeView({ note }: { note: OpenNote }) {
   const clock = display(ex.timer, timer);
   const best = ex.history.length ? Math.max(...ex.history.map((h) => h.score)) : null;
   const isProjectLab = ex.mode.id === "project_structure" || ex.mode.id === "commands";
+  const isCodeExercise =
+    code ||
+    ["implement", "refactor", "debug", "test", "review", "port", "optimize", "cloze", "pp_kata"].includes(ex.mode.id) ||
+    (ex.subject === "programming" && canRun);
+  const isWideLayout = isProjectLab || isCodeExercise;
+  const starterCode = ex.code.trim() ? ex.code : firstFencedCode(ex.statement);
 
   return (
     <div className="h-full overflow-y-auto nv-practice-view">
-      <div className={cn("mx-auto flex flex-col gap-4 py-6 w-full", isProjectLab ? "max-w-7xl px-4 sm:px-6 lg:px-8" : "max-w-[860px] px-8")}>
+      <div className={cn("mx-auto flex flex-col gap-4 py-6 w-full", isWideLayout ? "max-w-7xl px-4 sm:px-6 lg:px-8" : "max-w-[860px] px-8")}>
         <header className="flex flex-wrap items-start gap-4">
           <div className="min-w-[15rem] flex-1">
             <h1 className="break-words text-[22px] font-bold tracking-tight text-text">{ex.title}</h1>
@@ -430,12 +447,14 @@ export function PracticeView({ note }: { note: OpenNote }) {
         ) : (() => {
           const isQuiz = ex.mode.id === "pg_quiz" || ex.mode.id === "pg_true_false";
           const isProjectLab = ex.mode.id === "project_structure" || ex.mode.id === "commands";
-          const hasInteractiveView = isQuiz || isProjectLab;
+          const hasInteractiveView = isQuiz || isProjectLab || isCodeExercise;
 
           return (
             <section className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
-                <h2 className="font-mono text-[10.5px] uppercase tracking-wider text-faint">Tu respuesta</h2>
+                <h2 className="font-mono text-[10.5px] uppercase tracking-wider text-faint">
+                  {isCodeExercise ? "Tu solución de código" : "Tu respuesta"}
+                </h2>
                 <div className="flex items-center gap-1.5">
                   <button
                     type="button"
@@ -452,13 +471,13 @@ export function PracticeView({ note }: { note: OpenNote }) {
                     <button
                       type="button"
                       onClick={() => setInteractiveMode(!interactiveMode)}
-                      title={interactiveMode ? "Cambiar a editor de texto libre" : "Cambiar a vista interactiva guiada"}
+                      title={interactiveMode ? "Cambiar a editor de texto libre" : "Cambiar a vista especializada"}
                       className="flex items-center gap-1 rounded-lg border border-line bg-card px-2.5 py-1 text-[11.5px] font-semibold text-dim transition-colors hover:border-accent hover:text-ink"
                     >
-                      <SlidersHorizontal size={12} /> {interactiveMode ? "Ver texto directo" : "Modo interactivo"}
+                      <SlidersHorizontal size={12} /> {interactiveMode ? "Ver texto directo" : isCodeExercise ? "Editor de código" : "Modo interactivo"}
                     </button>
                   )}
-                  {canRun && (
+                  {canRun && !isCodeExercise && (
                     <button
                       type="button"
                       onClick={debugCode}
@@ -490,13 +509,23 @@ export function PracticeView({ note }: { note: OpenNote }) {
                     disabled={graded || !!pending}
                     onChange={onAnswer}
                   />
-                ) : (
+                ) : isProjectLab ? (
                   <ProjectStructureLab
                     statement={ex.statement}
                     discipline={ex.discipline}
                     value={answer}
                     disabled={graded || !!pending}
                     onChange={onAnswer}
+                  />
+                ) : (
+                  <PracticeCodeEditor
+                    value={answer}
+                    onChange={onAnswer}
+                    language={ex.run_language || ex.code_lang || "python"}
+                    disabled={graded || !!pending}
+                    starterCode={starterCode}
+                    placeholder={PLACEHOLDERS[ex.mode.id] ?? "Escribe tu solución de código aquí..."}
+                    mode={ex.mode.id}
                   />
                 )
               ) : (
@@ -520,8 +549,20 @@ export function PracticeView({ note }: { note: OpenNote }) {
               <div className="flex flex-wrap items-center gap-2">
               {!pending && !graded && (
                 <button type="button" disabled={busy} onClick={() => void submit()}
+                  title="Corrige automáticamente con el proveedor de IA configurado"
                   className="flex items-center gap-1.5 rounded-lg bg-accent px-3.5 py-2 text-[13px] font-semibold text-white hover:bg-accent-strong disabled:opacity-50">
                   <Send size={14} /> Entregar para corrección
+                </button>
+              )}
+              {!pending && !graded && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void submit("bridge")}
+                  title="Copia el prompt completo con rúbrica, solución y contexto listo para pegar en ChatGPT, Claude o Gemini web (sin API key requerida)"
+                  className="flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent-soft/40 px-3.5 py-2 text-[12.5px] font-semibold text-accent-text hover:bg-accent-soft hover:border-accent disabled:opacity-50"
+                >
+                  <Sparkles size={14} /> Entregar con Prompt IA (sin API key)
                 </button>
               )}
               {!pending && !graded && (
