@@ -128,6 +128,54 @@ The next train leaves at ten to six.
     expect(sendSpy).not.toHaveBeenCalled();
   });
 
+  it("grades a programming project_structure lab deterministically with no AI call", async () => {
+    const sendSpy = vi.spyOn(aiClient, "sendChat").mockResolvedValue(REPLY);
+    fs.writeFileSync(
+      path.join(tmpDir, "Lab.md"),
+      `---
+type: exercise
+subject: programming
+discipline: python
+mode: project_structure
+title: Estructura de Proyecto
+---
+# Estructura
+## Statement
+Crea \`.venv/\`, \`main.py\` y ejecuta \`python -m venv .venv\` y \`python main.py\`.
+## Solution
+.venv/
+main.py
+## Rubric
+- [ ] Incluye .venv/ y main.py
+- [ ] Ejecuta python -m venv .venv y python main.py
+`,
+      "utf-8",
+    );
+
+    const submission = `
+### Estructura de archivos y carpetas
+.venv/
+main.py
+
+### Secuencia de comandos en orden
+1. python -m venv .venv
+2. python main.py
+
+### Justificación
+Aislamiento de dependencias para el proyecto.
+
+### Verificación en Terminal
+- Estado: Ejecutado con éxito (Exit code 0)
+`;
+
+    const out = (await api.practice_grade("Lab.md", submission)) as Record<string, any>;
+    expect(out.graded).toBe(true);
+    expect(sendSpy).not.toHaveBeenCalled();
+    expect(out.result.score).toBe(100);
+    expect(out.result.verdict).toBe("correct");
+    expect(out.result.feedback).toContain("¡Excelente trabajo!");
+  });
+
   it("test_http_grading_records_the_attempt", async () => {
     const sendSpy = vi.spyOn(aiClient, "sendChat").mockResolvedValue(REPLY);
 

@@ -697,12 +697,16 @@ export function ProjectStructureLab({
         section = "tree";
         continue;
       }
-      if (/^###\s*Comandos/i.test(l)) {
+      if (/^###\s*Comandos|Secuencia/i.test(l)) {
         section = "cmds";
         continue;
       }
       if (/^###\s*Notas|Justificaci|Explicaci/i.test(l)) {
         section = "notes";
+        continue;
+      }
+      if (/^###\s*Verificaci|Terminal/i.test(l)) {
+        section = "term";
         continue;
       }
 
@@ -718,6 +722,10 @@ export function ProjectStructureLab({
         if (l && !l.startsWith("#")) {
           setNotes((prev) => (prev ? `${prev}\n${l}` : l));
         }
+      } else if (section === "term") {
+        if (/exit\s*code\s*0/i.test(l) || /éxito|exitosamente/i.test(l)) {
+          setTerminalExitCode(0);
+        }
       }
     }
 
@@ -725,7 +733,7 @@ export function ProjectStructureLab({
     if (cmdLines.length > 0) setCommands(cmdLines);
   }, []);
 
-  const sync = (nextPaths: string[], nextCmds: string[], nextNotes: string) => {
+  const sync = (nextPaths: string[], nextCmds: string[], nextNotes: string, isVerified = terminalExitCode === 0) => {
     const out: string[] = [];
     if (nextPaths.length > 0) {
       out.push("### Estructura de archivos y carpetas");
@@ -740,6 +748,14 @@ export function ProjectStructureLab({
     if (nextNotes.trim()) {
       out.push("### Justificación");
       out.push(nextNotes.trim());
+      out.push("");
+    }
+    if (isVerified) {
+      out.push("### Verificación en Terminal");
+      out.push("- Estado: Ejecutado con éxito (Exit code 0)");
+      if (nextCmds.length > 0) {
+        out.push(`- Comandos verificados: ${nextCmds.join("; ")}`);
+      }
     }
     onChange(out.join("\n"));
   };
@@ -809,9 +825,38 @@ export function ProjectStructureLab({
 
   const hasVenvCmd = commands.some((c) => c.includes("venv"));
   const hasRunCmd = commands.some((c) => c.includes("main.py") || c.includes("start") || c.includes("pytest"));
+  const venvIdx = commands.findIndex((c) => c.includes("venv"));
+  const runIdx = commands.findIndex((c) => c.includes("main.py") || c.includes("start"));
+  const orderCorrect = venvIdx === -1 || runIdx === -1 ? true : venvIdx < runIdx;
+  const isTerminalVerified = terminalExitCode === 0;
+
+  const commandsChecklist = [
+    {
+      title: "Entorno virtual en cola",
+      desc: "Comando 'python -m venv .venv'",
+      done: hasVenvCmd,
+    },
+    {
+      title: "Punto de entrada o pruebas",
+      desc: "Comando 'python main.py' o 'pytest'",
+      done: hasRunCmd,
+    },
+    {
+      title: "Orden cronológico correcto",
+      desc: "Creación antes de ejecución",
+      done: hasVenvCmd && hasRunCmd && orderCorrect,
+    },
+    {
+      title: "Ejecución verificada en Terminal",
+      desc: "Comandos probados con éxito (código 0)",
+      done: isTerminalVerified,
+    },
+  ];
+  const commandsChecksDone = commandsChecklist.filter((c) => c.done).length;
+
   const commandsDone = reqs.requiredCommands.length > 0
-    ? reqs.requiredCommands.every((req) => commands.some((c) => c === req || c.includes(req))) || (hasVenvCmd && hasRunCmd)
-    : commands.length >= 2;
+    ? reqs.requiredCommands.every((req) => commands.some((c) => c === req || c.includes(req))) && orderCorrect && isTerminalVerified
+    : commands.length >= 2 && orderCorrect && isTerminalVerified;
 
   const wordCount = notes.trim() ? notes.trim().split(/\s+/).length : 0;
   const notesDone = wordCount >= 15;
@@ -913,6 +958,7 @@ export function ProjectStructureLab({
       logs.push({ text: "✔ [TERMINAL RESULT] Todos los comandos se ejecutaron en la secuencia correcta.", kind: "success" });
       logs.push({ text: "✔ [VERIFICACIÓN] Código de salida final: 0 (OK)", kind: "success" });
       setTerminalExitCode(0);
+      sync(paths, cmdsToRun, notes, true);
     } else {
       setTerminalExitCode(1);
     }
@@ -933,7 +979,9 @@ export function ProjectStructureLab({
       if (res && res.stdout) {
         const lines = res.stdout.split("\n").map((text) => ({ text }));
         setTerminalLogs(lines);
-        setTerminalExitCode(res.exit_code ?? (res.ok ? 0 : 1));
+        const code = res.exit_code ?? (res.ok ? 0 : 1);
+        setTerminalExitCode(code);
+        if (code === 0) sync(paths, commands, notes, true);
       } else if (res && res.stderr) {
         setTerminalLogs(res.stderr.split("\n").map((text) => ({ text, kind: "stderr" as const })));
         setTerminalExitCode(res.exit_code ?? 1);
@@ -957,12 +1005,17 @@ export function ProjectStructureLab({
     setIsExecuting(true);
 
     const script = buildSingleCommandScript(clean, paths, reqs.projectName);
+    let success = true;
 
     try {
       const res = await api.codeRun("python", script);
       if (res && res.stdout) {
         const lines = res.stdout.split("\n").map((text) => ({ text }));
         setTerminalLogs((prev) => [...prev, ...lines]);
+        if (res.exit_code !== 0 && res.exit_code !== null) success = false;
+      } else if (res && res.stderr) {
+        setTerminalLogs((prev) => [...prev, { text: res.stderr, kind: "stderr" as const }]);
+        success = false;
       } else {
         // Fallback local
         setTerminalLogs((prev) => [
@@ -982,6 +1035,22 @@ export function ProjectStructureLab({
       setTimeout(() => {
         terminalEndRef.current?.scrollIntoView({ behavior: "smooth" });
       }, 100);
+    }
+
+    const isProjectCmd =
+      clean.startsWith("python ") ||
+      clean.startsWith("pip ") ||
+      clean.startsWith("source ") ||
+      clean.startsWith("pytest") ||
+      clean.startsWith("npm ") ||
+      clean.startsWith("node ") ||
+      clean.startsWith("git ");
+
+    if (isProjectCmd && success) {
+      const nextCmds = commands.includes(clean) ? commands : [...commands, clean];
+      setCommands(nextCmds);
+      setTerminalExitCode(0);
+      sync(paths, nextCmds, notes, true);
     }
   };
 
@@ -1920,6 +1989,48 @@ export function ProjectStructureLab({
                     </form>
                   </div>
                 )}
+              </div>
+
+              {/* Validación de Requisitos del Paso 2 */}
+              <div className="rounded-xl border border-line bg-card p-4 space-y-3 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-[13px] font-semibold text-text flex items-center gap-2">
+                    <ListChecks size={16} className="text-accent-text" />
+                    Validación de Requisitos del Paso 2
+                  </h4>
+                  <span
+                    className={cn(
+                      "font-mono text-[11px] font-semibold px-2 py-0.5 rounded border",
+                      commandsDone
+                        ? "text-mint bg-mint/15 border-mint/40"
+                        : "text-warn bg-warn/15 border-warn/40",
+                    )}
+                  >
+                    {commandsChecksDone} / {commandsChecklist.length} Cumplidos
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-[12px]">
+                  {commandsChecklist.map((c) => (
+                    <div
+                      key={c.title}
+                      className={cn(
+                        "flex items-start gap-2.5 rounded-lg border p-2.5 transition-colors",
+                        c.done ? "border-mint/40 bg-mint/10" : "border-line bg-surface opacity-75",
+                      )}
+                    >
+                      {c.done ? (
+                        <CheckCircle2 size={16} className="text-mint flex-none mt-0.5" />
+                      ) : (
+                        <Circle size={16} className="text-faint flex-none mt-0.5" />
+                      )}
+                      <div>
+                        <div className="font-semibold text-text">{c.title}</div>
+                        <div className="text-[11px] text-dim">{c.desc}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>

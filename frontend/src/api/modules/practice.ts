@@ -47,6 +47,7 @@ import { isEnglishSubject } from "../../core/practice/domain.js";
 import { isoDate } from "../../core/practice/reviewSchedule.js";
 import { isVocabularySkill } from "../../lib/englishSkillData.js";
 import { gradeDictation } from "../../core/english/dictationGrade.js";
+import { gradeProjectStructure } from "../../core/practice/projectStructureGrade.js";
 import { recordLearning } from "../../core/practice/learningLog.js";
 import { findAncestorTopicManifest } from "../../core/practice/topic.js";
 import { parseTimer } from "../../core/practice/timer.js";
@@ -342,6 +343,11 @@ export function practiceApi(app: AppState) {
       // A dictation is graded by comparing it with its transcript: exact, instant, offline and with no AI at all.
       if (isEnglishSubject(ex.subject) && ex.mode === "ls_dictation" && (ex.audio_text || "").trim()) {
         return practiceApply(app, p, ex, gradeDictation(ex.audio_text!, ans, ex.rubric.length), "local", ans, hints, secs, seen);
+      }
+      // Project structure and terminal command labs are graded deterministically from their solution and rubric:
+      // exact, instant, offline and with no AI at all.
+      if (ex.mode === "project_structure" || (ex.subject === "programming" && ex.mode === "commands")) {
+        return practiceApply(app, p, ex, gradeProjectStructure(ex, ans), "local", ans, hints, secs, seen);
       }
       const messages = practiceMessages(app.root, ex, ans, hints, secs, seen);
       const cfg = aiCfg();
