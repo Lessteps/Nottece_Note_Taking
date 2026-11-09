@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { parseStatementQuestions } from "./ConceptQuizPanel";
-import { buildAsciiTree, parseLabRequirements } from "./ProjectStructureLab";
+import {
+  buildAsciiTree,
+  parseLabRequirements,
+  getFileTemplate,
+  buildExplorerTree,
+  buildExecutionScript,
+  buildSingleCommandScript,
+} from "./ProjectStructureLab";
 
 describe("parseStatementQuestions", () => {
   it("parses multiple choice questions with A-D options", () => {
@@ -84,4 +91,71 @@ You are initializing a small Python project named \`my_project\` that requires t
     expect(reqs.suggestedPaths.length).toBeGreaterThanOrEqual(4);
   });
 });
+
+describe("getFileTemplate", () => {
+  it("provides syntax code and architectural explanation for main.py", () => {
+    const tmpl = getFileTemplate("main.py", "auth_service");
+    expect(tmpl.language).toBe("python");
+    expect(tmpl.badge).toContain("Punto de entrada");
+    expect(tmpl.code).toContain("from utils.helpers import format_message");
+    expect(tmpl.explanation).toContain("sys.path[0]");
+  });
+
+  it("provides code and explanation for helper modules", () => {
+    const tmpl = getFileTemplate("utils/helpers.py");
+    expect(tmpl.language).toBe("python");
+    expect(tmpl.code).toContain("def format_message");
+    expect(tmpl.explanation).toContain("Módulo de soporte");
+  });
+
+  it("provides configuration content for pyvenv.cfg", () => {
+    const tmpl = getFileTemplate(".venv/pyvenv.cfg");
+    expect(tmpl.language).toBe("ini");
+    expect(tmpl.code).toContain("include-system-site-packages = false");
+    expect(tmpl.explanation).toContain("Aislamiento de entorno");
+  });
+});
+
+describe("buildExplorerTree", () => {
+  it("structures raw paths into hierarchical folder and file nodes", () => {
+    const paths = [".venv/", "main.py", "utils/helpers.py", "tests/test_helpers.py"];
+    const tree = buildExplorerTree(paths);
+
+    const dirNames = tree.filter((n) => n.isDir).map((n) => n.name);
+    const fileNames = tree.filter((n) => !n.isDir).map((n) => n.name);
+
+    expect(dirNames).toContain(".venv");
+    expect(dirNames).toContain("utils");
+    expect(dirNames).toContain("tests");
+    expect(fileNames).toContain("main.py");
+
+    const utilsNode = tree.find((n) => n.name === "utils");
+    expect(utilsNode).toBeDefined();
+    expect(utilsNode?.children?.length).toBe(1);
+    expect(utilsNode?.children?.[0]?.name).toBe("helpers.py");
+  });
+});
+
+describe("buildExecutionScript and buildSingleCommandScript", () => {
+  it("generates a runnable Python script for command sequence verification", () => {
+    const script = buildExecutionScript(
+      [".venv/", "main.py", "utils/helpers.py"],
+      ["python -m venv .venv", "source .venv/bin/activate", "python main.py"],
+      "my_test_app",
+    );
+    expect(script).toContain("my_test_app");
+    expect(script).toContain("import sys, os, tempfile");
+    expect(script).toContain("python -m venv");
+    expect(script).toContain("activate");
+    expect(script).toContain("subprocess.run");
+  });
+
+  it("generates a single command execution script for terminal prompts", () => {
+    const script = buildSingleCommandScript("python -V", ["main.py"], "my_test_app");
+    expect(script).toContain("my_test_app");
+    expect(script).toContain("cmd_str =");
+    expect(script).toContain("python -V");
+  });
+});
+
 
