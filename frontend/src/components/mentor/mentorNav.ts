@@ -168,6 +168,8 @@ export function planeacionLinks(plan: Pick<MentorPlan, "programmingPractice" | "
 export const RUN_TAB_GENERAL = "general";
 export const RUN_TAB_RECORDS = "registros";
 export const runAreaTab = (subplanId: string): string => `area:${subplanId}`;
+export const runAreaInteractiveTab = (subplanId: string): string => `area:${subplanId}:interactiva`;
+export const runAreaInformativeTab = (subplanId: string): string => `area:${subplanId}:informativa`;
 export function hasBasesRoute(plan: Pick<MentorPlan, "subplans">): boolean {
   return plan.subplans.some((s) => {
     const g = (s.groups ?? []).find((x) => x.kind === "bases");

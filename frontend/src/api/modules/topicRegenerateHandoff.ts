@@ -18,7 +18,7 @@ import * as path from "node:path";
 import { ApiError } from "../../core/errors.js";
 import { generateConcept } from "../../../tools/kb_canvas";
 import { AIConfig } from "../../core/aiClient.js";
-import { scanTopicDesigns } from "../../core/mentor/topicDesignScan.js";
+import { diskExercises, readRawManifest, scanTopicDesigns } from "../../core/mentor/topicDesignScan.js";
 import { clearExerciseIndexCache } from "../../core/practice/exerciseIndex.js";
 import { keyOf } from "../../core/practice/domain.js";
 import { learningPromptLines } from "../../core/practice/learningLog.js";
@@ -99,6 +99,8 @@ export interface RegenHandoff {
   ready: { found: number; expected: number };
 }
 
+type WorkStep = "theory" | "map" | "practice" | "exercises";
+interface BatchWork { folder: string; steps: WorkStep[] }
 interface Cell { skill: string; difficulty: number; count: number }
 interface StateTopic extends RegenHandoffTopic {
   /** copias hechas (relativas a la vault) */
@@ -107,9 +109,12 @@ interface StateTopic extends RegenHandoffTopic {
   /** carpeta de resultados de este tema (relativa a la vault) */
   out: string;
   cells: Cell[];
+  steps?: WorkStep[];
 }
 interface State extends Omit<RegenHandoff, "topics" | "ready" | "taskAbs"> {
   topics: StateTopic[];
+  strictExerciseContract?: boolean;
+  missingOnly?: boolean;
 }
 
 /** Hooks de los tests. */
@@ -211,7 +216,7 @@ export function topicRegenerateHandoffApi(app: AppState, hooks: HandoffHooks = {
   };
 
   /** El contexto de una celda de ejercicios: manifiesto, teoría y skills de la vault (como `study_topic_session_build`). */
-  const sessionCtx = (folder: string, skill: string, difficulty: number) => {
+  const sessionCtx = (folder: string, skill: string, difficulty: number, count = PER_CELL) => {
     const found = findTopicManifest(app, folder);
     if (!found) throw new ApiError("Esta carpeta no tiene un manifiesto de tema.");
     const topicAbs = app.resolve(found.manifest.folder || folder, { allowRoot: true });
@@ -219,9 +224,9 @@ export function topicRegenerateHandoffApi(app: AppState, hooks: HandoffHooks = {
     const config = {
       skill,
       difficulty: Math.min(3, Math.max(1, difficulty)) as DifficultyLevel,
-      quantity: "3-5" as const,
+      quantity: "ai" as const,
       assistance: "no_help" as const,
-      planCount: null,
+      planCount: count,
       learning: learningPromptLines(app.root, folder, skill),
       taughtBefore: taughtBeforeOf(topicAbs),
       ...vocabularyWords(app, found.manifest.subject, skill, found.manifest.title),
@@ -229,8 +234,8 @@ export function topicRegenerateHandoffApi(app: AppState, hooks: HandoffHooks = {
     return { manifest: found.manifest, theoryNotes, config };
   };
 
-  const exercisePrompt = async (folder: string, skill: string, difficulty: number): Promise<Array<{ role: string; content: string }>> => {
-    const ctx = sessionCtx(folder, skill, difficulty);
+  const exercisePrompt = async (folder: string, skill: string, difficulty: number, count = PER_CELL): Promise<Array<{ role: string; content: string }>> => {
+    const ctx = sessionCtx(folder, skill, difficulty, count);
     let captured: Array<{ role: string; content: string }> = [];
     const client: SessionAIClient = {
       async generateExercises(messages) {
@@ -243,9 +248,12 @@ export function topicRegenerateHandoffApi(app: AppState, hooks: HandoffHooks = {
   };
 
   /** Las celdas skill × dificultad que cubre el tema AHORA (como si no tuviera ejercicios: se archivan los de antes). */
-  const cellsOf = (folder: string): Cell[] => {
-    const design = scanTopicDesigns([{ folder, title: path.basename(folder) }], { root: app.root, exercises: [] }).get(folder);
-    return design ? practiceCells(design, true).map((c) => ({ skill: c.skill, difficulty: c.difficulty, count: PER_CELL })) : [];
+  const cellsOf = (folder: string, missingOnly = false, includeRecommended = true): Cell[] => {
+    const existing = missingOnly ? diskExercises(app.root, folder) : [];
+    const design = scanTopicDesigns([{ folder, title: path.basename(folder) }], { root: app.root, exercises: existing }).get(folder);
+    const abs = topicAbsOf(folder);
+    const manifest = readRawManifest(path.join(abs, viewFileName(path.basename(abs), "practica")));
+    return design ? practiceCells(design, includeRecommended).map((c) => ({ skill: c.skill, difficulty: c.difficulty, count: Math.max(0, (manifest?.plan?.[c.skill]?.[c.difficulty - 1] || PER_CELL) - existing.filter((e) => (e.skill === c.skill || e.mode === c.skill) && e.difficulty === c.difficulty).length) })).filter((c) => c.count > 0) : [];
   };
 
   // ── Copias de seguridad ───────────────────────────────────────────────────────────────────────────────────────────
@@ -296,6 +304,7 @@ export function topicRegenerateHandoffApi(app: AppState, hooks: HandoffHooks = {
       "## 1. Rules",
       "",
       "- Write ONLY the files listed in section 4. Do not touch anything else in the vault, do not edit the backups in `.trash`, and do not run git commands.",
+      ...(s.missingOnly ? ["- Create only the missing exercises requested below. Do not replace or remove existing exercises."] : []),
       "- Do NOT draw or edit any `.canvas` by hand: the app regenerates each topic map from the note you write.",
       "- Follow the instructions of section 3 literally (they are the very prompts the app would send to its AI): headings, fields, language and style are a contract.",
       "- Everything that must be valid JSON is parsed by a program: escape newlines inside strings as `\\n`, escape quotes, and write NOTHING outside the JSON.",
@@ -320,7 +329,7 @@ export function topicRegenerateHandoffApi(app: AppState, hooks: HandoffHooks = {
       "",
       "- theory: checks the note is complete and the topic map can be generated from it (zero problems), then generates the map itself;",
       "- practice: parses your JSON with the app's own plan parser and writes the competency matrix into the topic's `.practica.md`;",
-      "- exercises: parses each JSON array, drops invalid items, needs at least " + MIN_PER_CELL + " valid exercises per cell, formats them as exercise notes and archives the old ones;",
+      s.missingOnly ? "- exercises: checks each missing cell and adds exercise notes without replacing or removing existing ones;" : "- exercises: checks every planned cell has its exact count, with hints, solutions and rubrics; then writes exercise notes and archives the old ones;",
       "- if something fails it lists the exact problems so you can fix them and run the validation again (or the person restores the backup).",
       "",
       "Checklist:",
@@ -337,7 +346,9 @@ export function topicRegenerateHandoffApi(app: AppState, hooks: HandoffHooks = {
       return regenEngines(AIConfig.fromDict(AppConfig.get_ai_config()));
     },
 
-    async study_topic_regenerate_handoff(foldersIn: unknown, whatIn: string, confirm?: boolean): Promise<RegenHandoff> {
+    async study_topic_regenerate_handoff(foldersIn: unknown, whatIn: string, confirm?: boolean, options?: { missingOnly?: boolean; includeRecommended?: boolean; work?: BatchWork[] }): Promise<RegenHandoff> {
+      const missingOnly = options?.missingOnly === true;
+      if (missingOnly && whatIn !== "exercises" && !options?.work) throw new ApiError("Completar faltantes solo admite ejercicios.");
       if (confirm !== true) throw new ApiError("Falta la confirmación: la tarea respalda y, al validar, reemplaza contenido.");
       if (whatIn === "map") throw new ApiError("El mapa no usa IA: se reconstruye de la nota. Regénéralo con «Con la app».");
       if (!HANDOFF_WHATS.includes(whatIn as HandoffWhat)) throw new ApiError("Elige qué regenerar: teoría, práctica, ejercicios o una combinación.");
@@ -348,7 +359,7 @@ export function topicRegenerateHandoffApi(app: AppState, hooks: HandoffHooks = {
       // Una teoría que ya cumple la skill actual (reconstruida antes: no desactualizada y dentro de los límites) no se vuelve a pedir en una combinación:
       // la tarea pide solo lo que falta. Si se pidió SOLO la teoría, se respeta (la persona la quiere rehacer).
       let skippedTheory = false;
-      if (STEPS_OF[what].length > 1 && STEPS_OF[what].includes("theory")) {
+      if (!options?.work && STEPS_OF[what].length > 1 && STEPS_OF[what].includes("theory")) {
         const stale = outdatedByFolder(app.root, folders);
         if (folders.every((f) => !stale.get(f)?.theory)) {
           const rest = STEPS_OF[what].filter((x) => x !== "theory").join("+") as HandoffWhat;
@@ -359,6 +370,16 @@ export function topicRegenerateHandoffApi(app: AppState, hooks: HandoffHooks = {
         }
       }
       const steps = STEPS_OF[what];
+      const work = new Map<string, WorkStep[]>();
+      if (options?.work) {
+        for (const entry of options.work) {
+          const folder = parseFolder(entry.folder);
+          if (!folders.includes(folder) || work.has(folder) || !Array.isArray(entry.steps) || !entry.steps.length || entry.steps.some((step) => !["theory", "map", "practice", "exercises"].includes(step))) throw new ApiError("El alcance de la tarea contiene temas o piezas inválidos.");
+          work.set(folder, [...new Set(entry.steps)]);
+        }
+        if (work.size !== folders.length) throw new ApiError("Falta el alcance de algún tema seleccionado.");
+      }
+      const stepsFor = (folder: string): readonly WorkStep[] => work.get(folder) ?? steps;
       const at = nowDate();
       const space = folders[0]!.split("/")[0]!;
       const slug = folders.length === 1 ? safeSlug(path.posix.basename(folders[0]!)) : `${safeSlug(path.posix.basename(folders[0]!))} y ${folders.length - 1} mas`;
@@ -382,14 +403,15 @@ export function topicRegenerateHandoffApi(app: AppState, hooks: HandoffHooks = {
       };
       const plans: Array<{ folder: string; theory?: Array<{ role: string; content: string }>; practice?: Array<{ role: string; content: string }>; cells: Cell[]; exercisePrompts: Map<string, Array<{ role: string; content: string }>> }> = [];
       for (const folder of folders) {
+        const steps = stepsFor(folder);
         const plan: (typeof plans)[number] = { folder, cells: [], exercisePrompts: new Map() };
         if (steps.includes("theory")) plan.theory = theoryPrompt(folder);
         if (steps.includes("practice")) plan.practice = practiceCtx(folder).messages;
         if (steps.includes("exercises") && !steps.includes("practice")) {
           // solo ejercicios (con o sin teoría nueva): las competencias son las del plan de práctica actual
-          plan.cells = cellsOf(folder);
+          plan.cells = cellsOf(folder, missingOnly, options?.includeRecommended !== false);
           if (!plan.cells.length) throw new ApiError(`«${path.posix.basename(folder)}»: no hay competencias (skills) con las que generar ejercicios. Regenera antes la práctica.`);
-          for (const c of plan.cells) plan.exercisePrompts.set(`${c.skill}|${c.difficulty}`, await exercisePrompt(folder, c.skill, c.difficulty));
+          for (const c of plan.cells) plan.exercisePrompts.set(`${c.skill}|${c.difficulty}`, await exercisePrompt(folder, c.skill, c.difficulty, c.count));
         } else if (steps.includes("exercises")) {
           // las celdas del plan NUEVO aún no existen: como modelo se enseña el prompt de la primera celda del plan actual (si lo hay)
           const model = cellsOf(folder)[0];
@@ -406,13 +428,14 @@ export function topicRegenerateHandoffApi(app: AppState, hooks: HandoffHooks = {
 
       // 2. copias de seguridad (las mismas carpetas `.trash/regenerar` que «Con la app»)
       const topics: StateTopic[] = folders.map((folder, i) => {
+        const steps = stepsFor(folder);
         const topicAbs = topicAbsOf(folder);
         const name = path.basename(topicAbs);
         const backupAbs = uniqueBackup(name, at);
         const saved: string[] = [];
         const noteAbs = path.join(topicAbs, NOTE_NAME(name));
         const practicaAbs = path.join(topicAbs, viewFileName(name, "practica"));
-        if (steps.includes("theory")) for (const f of [noteAbs, ...canvasesOf(topicAbs).map((c) => path.join(topicAbs, c))]) if (fs.existsSync(f)) saved.push(rel(copyInto(f, backupAbs)));
+        if (steps.includes("theory") || steps.includes("map")) for (const f of [...(steps.includes("theory") ? [noteAbs] : []), ...canvasesOf(topicAbs).map((c) => path.join(topicAbs, c))]) if (fs.existsSync(f)) saved.push(rel(copyInto(f, backupAbs)));
         if (steps.includes("practice") && fs.existsSync(practicaAbs)) saved.push(rel(copyInto(practicaAbs, backupAbs)));
         const preExercises: string[] = [];
         if (steps.includes("exercises")) {
@@ -423,12 +446,14 @@ export function topicRegenerateHandoffApi(app: AppState, hooks: HandoffHooks = {
         }
         fs.mkdirSync(backupAbs, { recursive: true });
         const out = rel(path.join(resultAbs, `${String(i + 1).padStart(2, "0")} ${safeSlug(name)}`));
-        return { folder, title: name, backup: rel(backupAbs), state: "pending", done: [], problems: [], created: [], restored: false, saved, preExercises, out, cells: plans[i]!.cells };
+        return { folder, title: name, backup: rel(backupAbs), state: "pending", done: [], problems: [], created: [], restored: false, saved, preExercises, out, cells: plans[i]!.cells, ...(options?.work ? { steps: [...steps] } : {}) };
       });
 
       // 3. el documento
       const state: State = {
         id,
+        strictExerciseContract: true,
+        missingOnly,
         what,
         createdAt: at.toISOString(),
         task: rel(taskAbs),
@@ -441,6 +466,7 @@ export function topicRegenerateHandoffApi(app: AppState, hooks: HandoffHooks = {
       };
       const blocks: TopicBlock[] = topics.map((t, i) => {
         const plan = plans[i]!;
+        const steps = stepsFor(t.folder);
         const md: string[] = [`### ${i + 1}. \`${t.folder}\``, ""];
         const noteRel = `${t.folder}/${t.title}.md`;
         if (plan.theory) {
@@ -466,6 +492,7 @@ export function topicRegenerateHandoffApi(app: AppState, hooks: HandoffHooks = {
             "",
           );
         }
+        if (steps.includes("map") && !steps.includes("theory")) md.push("#### Map", "", "The app rebuilds the map from the existing theory when the person validates; do not edit the canvas.", "");
         if (plan.practice) {
           const sys = plan.practice.find((m) => m.role === "system")?.content ?? "";
           const user = plan.practice.find((m) => m.role === "user")?.content ?? "";
@@ -488,28 +515,34 @@ export function topicRegenerateHandoffApi(app: AppState, hooks: HandoffHooks = {
             md.push(
               `#### Exercises — one file per skill × difficulty of YOUR practice plan`,
               "",
-              `For every skill with a count above 0 at a difficulty in the plan you wrote, write \`${t.out}/ejercicios_<skill>_d<difficulty>.json\` (e.g. \`ejercicios_implement_d1.json\`): a JSON array of exactly ${PER_CELL} exercise objects, built with the exercise instructions below.`,
+              `${missingOnly ? "For every skill and difficulty in the plan you wrote, subtract the existing exercise count below; only if the remainder is positive, write" : "For every skill and difficulty with a count above 0 in the plan you wrote, write"} \`${t.out}/ejercicios_<skill>_d<difficulty>.json\` (e.g. \`ejercicios_implement_d1.json\`): a JSON array containing exactly ${missingOnly ? "the remaining count" : "the count specified for that cell"}, built with the exercise instructions below.`,
               "",
-              `Exercise instructions (the app's prompt for one cell, shown for the first skill of the OLD plan as a model — change only the skill and the difficulty):`,
+              `Exercise instructions (the app's prompt for one cell, shown for the first skill of the OLD plan as a model — change the skill, difficulty and count to match the new plan):`,
               "",
             );
+            if (missingOnly) {
+              const existing = diskExercises(app.root, t.folder);
+              const counts = new Map<string, number>();
+              for (const ex of existing) { const key = `${ex.mode || ex.skill} · difficulty ${ex.difficulty}`; counts.set(key, (counts.get(key) ?? 0) + 1); }
+              md.push("Existing exercise counts (do not replace them):", ...([...counts].map(([key, n]) => `- ${key}: ${n}`)), "");
+            }
             const first = [...plan.exercisePrompts.values()][0];
             if (first) {
               const sys = first.find((m) => m.role === "system")?.content ?? "";
               const user = first.find((m) => m.role === "user")?.content ?? "";
-              md.push(`Instructions: **${skillRef(sys, "Exercise creator")}**. Model request (for the first cell of the current plan; use the same one with your skill, difficulty and ${PER_CELL} exercises):`, "", fenced(user), "");
+              md.push(`Instructions: **${skillRef(sys, "Exercise creator")}**. Model request (replace its skill, difficulty and exercise count with those of each new cell):`, "", fenced(user), "");
             } else {
               md.push(`Exercise format: JSON objects with \`title\`, \`statement\`, \`hints\`, \`solution\`, \`rubric\` (see the vault skills in \`${space}/_skills\`).`, "");
             }
-            md.push("- [ ] one `ejercicios_<skill>_d<n>.json` per skill × difficulty of the plan", "");
+            md.push(missingOnly ? "- [ ] one `ejercicios_<skill>_d<n>.json` per cell whose count is still missing" : "- [ ] one `ejercicios_<skill>_d<n>.json` per skill × difficulty of the plan", "");
           } else {
-            md.push(`#### Exercises — ${t.cells.length} file(s) of ${PER_CELL} exercises each`, "");
+            md.push(`#### Exercises — ${t.cells.length} file(s), with the count specified for each cell`, "");
             for (const c of t.cells) {
               const m = plan.exercisePrompts.get(`${c.skill}|${c.difficulty}`) ?? [];
               const sys = m.find((x) => x.role === "system")?.content ?? "";
               const user = m.find((x) => x.role === "user")?.content ?? "";
               md.push(
-                `##### \`${c.skill}\` · difficulty ${c.difficulty} → write \`${t.out}/ejercicios_${c.skill}_d${c.difficulty}.json\``,
+                `##### \`${c.skill}\` · difficulty ${c.difficulty} · ${c.count} exercises → write \`${t.out}/ejercicios_${c.skill}_d${c.difficulty}.json\``,
                 "",
                 `Instructions: **${skillRef(sys, "Exercise creator")}**. Request:`,
                 "",
@@ -521,7 +554,7 @@ export function topicRegenerateHandoffApi(app: AppState, hooks: HandoffHooks = {
             }
           }
           md.push(
-            `Output contract for every exercises file: a JSON array of exactly ${PER_CELL} objects \`{"title","statement","hints":[…],"solution","rubric":[…]}\`. Required: non-empty \`statement\` and \`solution\`, \`rubric\` with at least 3 checklist criteria; the app needs at least ${MIN_PER_CELL} valid exercises per file and writes the exercise notes itself (do not write \`.md\` exercises). Programming exercises: run every code block of a solution before pasting its output.`,
+            `Output contract for each exercises file: a JSON array with exactly the planned number of objects \`{"title","statement","hints":[…],"solution","rubric":[…]}\`. Every exercise must contain a non-empty statement, solution, at least one optional hint without the answer, and at least 3 rubric criteria. The app writes the exercise notes (do not write exercise .md files). Programming exercises: run every code block of a solution before pasting its output.`,
             "",
           );
         }
@@ -529,7 +562,7 @@ export function topicRegenerateHandoffApi(app: AppState, hooks: HandoffHooks = {
       });
 
       fs.mkdirSync(dirAbs, { recursive: true });
-      for (const t of topics) if (steps.includes("practice") || steps.includes("exercises")) fs.mkdirSync(app.resolve(t.out, { allowRoot: true, mustExist: false }), { recursive: true });
+      for (const t of topics) if (stepsFor(t.folder).includes("practice") || stepsFor(t.folder).includes("exercises")) fs.mkdirSync(app.resolve(t.out, { allowRoot: true, mustExist: false }), { recursive: true });
       fs.writeFileSync(taskAbs, await buildMarkdown(state, taskAbs, skillIds, blocks), "utf-8");
       save(state);
       return view(state);
@@ -604,22 +637,39 @@ export function topicRegenerateHandoffApi(app: AppState, hooks: HandoffHooks = {
   }
 
   async function validateTopic(s: State, t: StateTopic): Promise<void> {
-    const steps = STEPS_OF[s.what];
+    const steps = t.steps ?? STEPS_OF[s.what];
     t.problems = [];
     for (const step of steps) {
       if (t.done.includes(step)) continue;
-      const problems = step === "theory" ? applyTheory(t) : step === "practice" ? applyPractice(t) : await applyExercises(t, s.what);
+      const problems = step === "theory" ? applyTheory(t) : step === "map" ? applyMap(t) : step === "practice" ? applyPractice(t) : await applyExercises(t, s.what, !!s.strictExerciseContract, !!s.missingOnly);
       if (problems.length) {
         t.problems = problems;
         t.state = "error";
         s.log.push(`✗ «${t.title}» (${step}): ${problems[0]}`);
         return;
       }
-      stampPiece(t, step);
+      if (step !== "map") stampPiece(t, step);
       t.done.push(step);
-      s.log.push(`✓ «${t.title}»: ${step === "theory" ? "teoría y mapa" : step === "practice" ? "práctica" : "ejercicios"} validados.`);
+      s.log.push(`✓ «${t.title}»: ${step === "theory" ? "teoría y mapa" : step === "map" ? "mapa" : step === "practice" ? "práctica" : "ejercicios"} validados.`);
+    }
+    if (t.steps) {
+      const stale = outdatedByFolder(app.root, [t.folder]).get(t.folder);
+      const remaining = steps.filter((step) => step === "theory" ? stale?.theory : step === "map" ? stale?.canvas : step === "practice" ? stale?.practica : stale?.exercises);
+      if (remaining.length) {
+        t.problems = [`La validación aplicó los resultados, pero siguen desactualizadas estas piezas: ${remaining.join(", ")}. Revisa el plan y los ejercicios existentes.`];
+        t.state = "error";
+        s.log.push(`✗ «${t.title}»: ${t.problems[0]}`);
+        return;
+      }
     }
     t.state = "ok";
+  }
+
+  function applyMap(t: StateTopic): string[] {
+    try {
+      const result = generateConcept(topicAbsOf(t.folder));
+      return result.problems.length ? result.problems.slice(0, 5).map((p) => `Mapa: ${p}`) : [];
+    } catch (e) { return [`No se pudo generar el mapa: ${(e as Error).message}`]; }
   }
 
   function applyTheory(t: StateTopic): string[] {
@@ -687,12 +737,20 @@ export function topicRegenerateHandoffApi(app: AppState, hooks: HandoffHooks = {
     return [];
   }
 
-  async function applyExercises(t: StateTopic, what: HandoffWhat): Promise<string[]> {
+  async function applyExercises(t: StateTopic, what: HandoffWhat, strict: boolean, missingOnly: boolean): Promise<string[]> {
     const outAbs = app.resolve(t.out, { allowRoot: true, mustExist: false });
     // «todo»: las celdas salen del plan recién escrito; «ejercicios»: las que se calcularon al crear la tarea
-    const cells = STEPS_OF[what].includes("practice") ? cellsOf(t.folder) : t.cells;
-    if (!cells.length) return ["El plan de práctica no tiene celdas (skill × dificultad) de las que generar ejercicios."];
+    const cells = (t.steps ?? STEPS_OF[what]).includes("practice") ? cellsOf(t.folder, missingOnly) : t.cells;
+    if (!cells.length) return missingOnly ? [] : ["El plan de práctica no tiene celdas (skill × dificultad) de las que generar ejercicios."];
     const problems: string[] = [];
+    if (missingOnly && !(t.steps ?? STEPS_OF[what]).includes("practice")) {
+      const current = cellsOf(t.folder, true);
+      for (const cell of cells) {
+        const now = current.find((c) => c.skill === cell.skill && c.difficulty === cell.difficulty)?.count ?? 0;
+        if (now !== cell.count) problems.push(`Cambió la cantidad pendiente de ${cell.skill} dificultad ${cell.difficulty}: antes ${cell.count}, ahora ${now}. Crea una tarea nueva para evitar duplicados.`);
+      }
+      if (problems.length) return problems;
+    }
     const batches: Array<{ cell: Cell; items: GeneratedExercise[] }> = [];
     for (const c of cells) {
       const file = path.join(outAbs, `ejercicios_${c.skill}_d${c.difficulty}.json`);
@@ -701,29 +759,46 @@ export function topicRegenerateHandoffApi(app: AppState, hooks: HandoffHooks = {
         continue;
       }
       const all = parseExerciseArray(fs.readFileSync(file, "utf-8"));
-      const valid = all.filter((e) => e.statement.trim().length >= 20 && e.solution.trim().length >= 10 && e.rubric.length >= 3);
-      if (valid.length < MIN_PER_CELL) problems.push(`${path.basename(file)}: solo ${valid.length} ejercicio(s) válido(s) de ${all.length} (hacen falta ${MIN_PER_CELL}: enunciado, solución y una rúbrica de al menos 3 criterios).`);
-      else batches.push({ cell: c, items: valid.slice(0, PER_CELL) });
+      const valid = all.filter((e) => e.statement.trim().length >= 20 && e.solution.trim().length >= 10 && e.rubric.length >= 3 && (!strict || e.hints.some((h) => h.trim())));
+      const required = strict ? c.count : MIN_PER_CELL;
+      if (valid.length < required || (strict && all.length !== required)) problems.push(`${path.basename(file)}: ${valid.length} ejercicio(s) válido(s) de ${all.length}; se requieren exactamente ${required}, con enunciado, solución, pistas y al menos 3 criterios.`);
+      else batches.push({ cell: c, items: valid.slice(0, c.count || PER_CELL) });
     }
     if (problems.length) return problems;
-    // todo bien: se escriben las notas con el mismo formateador de la app (el «cliente de IA» devuelve lo que escribió el agente) y se archivan las anteriores
-    const written: string[] = [];
+    // Construir todos los archivos antes de escribir evita dejar un lote parcial si hay colisiones o un error de generación.
+    const prepared: Array<{ abs: string; content: string }> = [];
     for (const { cell, items } of batches) {
-      const ctx = sessionCtx(t.folder, cell.skill, cell.difficulty);
+      const ctx = sessionCtx(t.folder, cell.skill, cell.difficulty, cell.count || PER_CELL);
       const client: SessionAIClient = { generateExercises: async () => items };
       const plan = await buildTopicSession(ctx.manifest, t.folder, ctx.config, [], ctx.theoryNotes, client);
       for (const ex of plan.exercises) {
         if (!ex.isNew || !ex.content) continue;
-        const abs = app.resolve(ex.path, { allowRoot: false, mustExist: false });
-        fs.mkdirSync(path.dirname(abs), { recursive: true });
-        fs.writeFileSync(abs, ex.content, "utf-8");
-        written.push(rel(abs));
+        prepared.push({ abs: app.resolve(ex.path, { allowRoot: false, mustExist: false }), content: ex.content });
       }
     }
-    if (!written.length) return ["No se pudo escribir ningún ejercicio."];
+    if (!prepared.length) return ["No se pudo escribir ningún ejercicio."];
+    if (missingOnly) {
+      const unique = new Set<string>();
+      for (const ex of prepared) {
+        if (unique.has(ex.abs) || fs.existsSync(ex.abs)) return [`Ya existe ${rel(ex.abs)}; no se sobrescribió ningún ejercicio. Vuelve a validar.`];
+        unique.add(ex.abs);
+      }
+    }
+    const written: string[] = [];
+    try {
+      for (const ex of prepared) {
+        fs.mkdirSync(path.dirname(ex.abs), { recursive: true });
+        fs.writeFileSync(ex.abs, ex.content, missingOnly ? { encoding: "utf-8", flag: "wx" } : "utf-8");
+        written.push(rel(ex.abs));
+      }
+    } catch (error) {
+      // En modo completar solo borramos los archivos creados en este intento, nunca los anteriores.
+      if (missingOnly) for (const file of written) { try { fs.unlinkSync(path.join(app.root, ...file.split("/"))); } catch { /* se informa el fallo */ } }
+      return [`No se pudo guardar el lote de ejercicios: ${(error as Error).message}`];
+    }
     t.created.push(...written);
     // los anteriores se archivan: la copia ya está en .trash/regenerar/<tema>/Ejercicios, así que se quitan de su sitio
-    for (const f of t.preExercises) {
+    for (const f of missingOnly ? [] : t.preExercises) {
       const abs = path.join(app.root, ...f.split("/"));
       const copy = path.join(app.root, ...t.backup.split("/"), "Ejercicios", path.basename(path.dirname(abs)), path.basename(abs));
       try {
@@ -738,10 +813,10 @@ export function topicRegenerateHandoffApi(app: AppState, hooks: HandoffHooks = {
 
   /** La vista pública del estado + cuántos archivos esperados existen ya. */
   function view(s: State): RegenHandoff {
-    const steps = STEPS_OF[s.what];
     let expected = 0;
     let found = 0;
     for (const t of s.topics) {
+      const steps = t.steps ?? STEPS_OF[s.what];
       const topicAbs = topicAbsOf(t.folder);
       const outAbs = app.resolve(t.out, { allowRoot: true, mustExist: false });
       if (steps.includes("theory")) {
@@ -775,7 +850,7 @@ export function topicRegenerateHandoffApi(app: AppState, hooks: HandoffHooks = {
     return {
       ...rest,
       taskAbs: path.join(app.root, ...s.task.split("/")),
-      topics: topics.map(({ saved: _saved, preExercises: _pre, out: _out, cells: _cells, ...pub }) => ({ ...pub, problems: [...pub.problems], created: [...pub.created], done: [...pub.done] })),
+      topics: topics.map(({ saved: _saved, preExercises: _pre, out: _out, cells: _cells, steps: _steps, ...pub }) => ({ ...pub, problems: [...pub.problems], created: [...pub.created], done: [...pub.done] })),
       log: [...s.log],
       ready: { found, expected },
     };

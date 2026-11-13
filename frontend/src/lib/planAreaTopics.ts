@@ -45,6 +45,7 @@ export interface AreaTopicRow {
   incomplete: boolean;
   /** piezas hechas con una versión anterior de su skill: piden regenerarse (botón verde) */
   outdated?: OutdatedSkills;
+  practiceMismatch?: boolean;
 }
 
 import type { PlanSchedule } from "./planSchedule.js";
@@ -107,6 +108,7 @@ export function areaTopicRows(sub: MentorSubplan, catalog: ReadonlyArray<PlanTop
         ...(c?.planExercises ? { planExercises: c.planExercises } : {}),
         incomplete: needsGenerate(c),
         ...(c?.outdated ? { outdated: c.outdated } : {}),
+        ...(c?.practiceMismatch ? { practiceMismatch: true } : {}),
       };
     });
 }

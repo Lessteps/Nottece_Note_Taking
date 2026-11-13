@@ -38,11 +38,25 @@ afterEach(() => {
 });
 
 describe("ExternalTasks", () => {
+  it("en el panel recupera una tarea pendiente y no permite ocultarla antes de validar", async () => {
+    vi.spyOn(api, "studyTopicRegenerateHandoffList").mockResolvedValue([task("saved")]);
+    await act(async () => { root.render(<ExternalTasks panel />); });
+    await flush();
+    expect(byTest("external-task")?.textContent).toContain("Tema A");
+    expect(byTest("handoff-regen-validate")).not.toBeNull();
+    expect(byTest("handoff-regen-close")).toBeNull();
+    await act(async () => { root.unmount(); });
+    root = createRoot(host);
+    await act(async () => { root.render(<ExternalTasks panel />); });
+    await flush();
+    expect(byTest("handoff-regen-validate")).not.toBeNull();
+  });
   it("no aparece si no hay tareas guardadas", async () => {
-    vi.spyOn(api, "studyTopicRegenerateHandoffList").mockResolvedValue([]);
+    const list = vi.spyOn(api, "studyTopicRegenerateHandoffList").mockResolvedValue([]);
     await act(async () => { root.render(<ExternalTasks />); });
     await flush();
     expect(byTest("external-tasks")).toBeNull();
+    expect(list).toHaveBeenCalledTimes(1);
   });
 
   it("lista las tareas con su estado (pendiente / validada), plegado al principio, y permite copiar y validar", async () => {

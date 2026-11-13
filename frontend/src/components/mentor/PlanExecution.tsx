@@ -25,12 +25,15 @@ import {
   type RunStatus,
   type TaskState,
 } from "../../lib/planExecution";
-import type { MentorExecutionView, MentorPlan } from "../../lib/types";
+import type { MentorExecutionView, MentorPlan, RegenHandoff } from "../../lib/types";
 import { useApp } from "../../store/app";
 import { useMentor } from "../../store/mentor";
+import { useRegenEngine } from "../../store/regenEngine";
+import { RegenHandoffPanel } from "./RegenHandoffPanel";
 import { Chip, GhostButton, Modal, PrimaryButton } from "../common/forms";
 import { cn, confirmAction } from "../ui";
 import { openTopic } from "./openTopic";
+import { useModuleVisible } from "../ModuleHost";
 import type { CoverageState } from "./PlanCoverage";
 import { ProgressBar, ThinkingStatus, useAiStatus } from "./parts";
 
@@ -188,7 +191,7 @@ export function ReportList({ report }: { report: ExecutionReport }) {
         const tasks = a.areaTasks.length + a.topics.reduce((n, t) => n + t.tasks.length, 0);
         const isOpen = open[a.key] ?? i === 0;
         return (
-          <details key={a.key} open={isOpen} onToggle={(e) => setOpen((o) => ({ ...o, [a.key]: (e.currentTarget as HTMLDetailsElement).open }))} className="rounded-xl border border-line bg-surface/40 px-3 py-2" data-testid="exec-area">
+          <details key={a.key} open={isOpen} onToggle={(e) => { const expanded = e.currentTarget.open; setOpen((o) => ({ ...o, [a.key]: expanded })); }} className="rounded-xl border border-line bg-surface/40 px-3 py-2" data-testid="exec-area">
             <summary className="flex min-h-8 cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 text-[14px] font-semibold">
               <span>{a.area}</span>
               <span className="text-[13.5px] font-normal text-dim">{plural(tasks, "tarea", "tareas")}{a.topics.some((t) => t.manual.length) ? ` · ${a.topics.filter((t) => t.manual.length).length} para revisar a mano` : ""}</span>
@@ -256,12 +259,13 @@ export interface ExecuteDialogProps {
   /** el plan aún es una propuesta: confirmar también lo mantiene («Mantener y ejecutar») */
   proposed: boolean;
   initialScope?: ExecutionScope;
+  queueNotice?: string;
   onClose: () => void;
   /** se llama cuando la ejecución empezó (y el plan se mantuvo, si era una propuesta) */
   onStarted: (execution: MentorExecutionView | null) => void;
 }
 
-export function ExecuteDialog({ planId, proposed, initialScope, onClose, onStarted }: ExecuteDialogProps) {
+export function ExecuteDialog({ planId, proposed, initialScope, queueNotice, onClose, onStarted }: ExecuteDialogProps) {
   const uid = useId();
   const toast = useApp((s) => s.toast);
   const [scope, setScope] = useState<ExecutionScope>(initialScope ?? DEFAULT_UI_SCOPE);
@@ -271,6 +275,8 @@ export function ExecuteDialog({ planId, proposed, initialScope, onClose, onStart
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [handoff, setHandoff] = useState<RegenHandoff | null>(null);
+  const handoffs = useRegenEngine((s) => s.handoffs);
   const seq = useRef(0);
   useEffect(() => {
     const n = ++seq.current;
@@ -313,6 +319,17 @@ export function ExecuteDialog({ planId, proposed, initialScope, onClose, onStart
       setBusy(false);
     }
   };
+  const externalAvailable = !proposed && scope.mode === "topic" && !!scope.folder && !!report?.tasks.length && report.tasks.every((t) => t.kind === "practice");
+  const createExternal = async () => {
+    if (!externalAvailable || !scope.folder || busy) return;
+    setBusy(true);
+    try {
+      const h = await api.studyTopicRegenerateHandoff(scope.folder, "exercises", true, { missingOnly: true, includeRecommended: scope.includeRecommended });
+      useRegenEngine.getState().putHandoff(h);
+      setHandoff(h);
+    } catch (e) { toast("error", (e as Error).message); }
+    finally { setBusy(false); }
+  };
   const label = proposed ? "Mantener y ejecutar" : initialScope?.mode === "topic" || initialScope?.mode === "area" ? "Generar" : "Ejecutar plan";
   const maxWeek = report?.maxWeek ?? 1;
   // los temas del plan no están en el diálogo: las áreas salen del informe (o de un informe sin tareas)
@@ -324,15 +341,18 @@ export function ExecuteDialog({ planId, proposed, initialScope, onClose, onStart
       width={760}
       footer={
         <>
-          <GhostButton large onClick={onClose}>Cancelar</GhostButton>
+          <GhostButton large onClick={onClose}>{handoff ? "Cerrar" : "Cancelar"}</GhostButton>
+          {externalAvailable && !handoff && <GhostButton large disabled={busy || loading} onClick={() => void createExternal()} data-testid="exec-external">Crear prompt para agente</GhostButton>}
           <span className="flex-1" />
-          <PrimaryButton large disabled={!report || !report.tasks.length || !aiOn || busy || running} onClick={() => void confirm()} data-testid="exec-confirm">
+          <PrimaryButton large disabled={!!handoff || !report || !report.tasks.length || !aiOn || busy || running} onClick={() => void confirm()} data-testid="exec-confirm">
             <Sparkles size={16} aria-hidden /> {busy ? "Empezando…" : `${label} (${report?.totals.tasks ?? 0})`}
           </PrimaryButton>
         </>
       }
     >
       <div data-testid="exec-dialog" aria-labelledby={`${uid}-h`} className="space-y-3">
+        {queueNotice && <p role="note" className="rounded-lg border border-warn/60 px-3 py-2 text-[14px]" data-testid="exec-queue-notice">{queueNotice}</p>}
+        {handoff && <RegenHandoffPanel handoff={handoffs[handoff.id] ?? handoff} />}
         <h3 id={`${uid}-h`} className="sr-only">{label}: informe y confirmación</h3>
         <p className="text-[14px] text-dim">
           {proposed ? "Se mantiene el plan y el Mentor crea en segundo plano lo que falta en tu vault. " : "El Mentor crea en segundo plano lo que falta en tu vault. "}
@@ -371,7 +391,7 @@ export function ExecuteDialog({ planId, proposed, initialScope, onClose, onStart
             {report.manual.length > 0 && <p className="text-[13.5px] text-dim">{plural(report.manual.length, "tema ya existente tiene", "temas ya existentes tienen")} defectos que no se corrigen solos (se listan para revisarlos a mano).</p>}
           </>
         )}
-        {!aiOn && <p className="rounded-lg border border-warn/60 px-3 py-2 text-[14px]" data-testid="exec-no-ai">La IA no está configurada: «{label}» está desactivado porque crear temas y ejercicios necesita IA. El análisis y el informe sí funcionan sin ella.</p>}
+        {!aiOn && <p className="rounded-lg border border-warn/60 px-3 py-2 text-[14px]" data-testid="exec-no-ai">La IA no está configurada: «{label}» está desactivado porque crear temas y ejercicios necesita IA. El análisis y el informe sí funcionan sin ella. {externalAvailable && "Puedes crear un prompt para un agente externo con el botón de abajo."}</p>}
         {running && <p className="rounded-lg border border-warn/60 px-3 py-2 text-[14px]">Ya hay una ejecución {prev?.state.status === "paused" ? "en pausa" : "en curso"} para este plan: reanúdala o cancélala antes de empezar otra.</p>}
         {report && report.tasks.length > 0 && !loading && (
           <details>
@@ -472,6 +492,7 @@ export function ExecutionProgressView({ exec, onPause, onResume, onCancel, busy 
 // ── Panel de «Mi plan» ──────────────────────────────────────────────────
 
 export function useExecution(planId: string) {
+  const visible = useModuleVisible();
   const [exec, setExec] = useState<MentorExecutionView | null>(null);
   const alive = useRef(true);
   const planVersion = useMentor((s) => s.planVersion);
@@ -490,15 +511,15 @@ export function useExecution(planId: string) {
     }
   }, [planId]);
   useEffect(() => {
-    void reload();
-  }, [reload, planVersion]);
+    if (visible) void reload();
+  }, [reload, planVersion, visible]);
   // mientras corre, se consulta el estado cada poco (el trabajo sigue en segundo plano aunque la persona cambie de pestaña)
   const running = exec?.state.status === "running";
   useEffect(() => {
-    if (!running) return;
+    if (!running || !visible) return;
     const t = setInterval(() => void reload(), POLL_MS);
     return () => clearInterval(t);
-  }, [running, reload]);
+  }, [running, reload, visible]);
   return { exec, setExec, reload };
 }
 

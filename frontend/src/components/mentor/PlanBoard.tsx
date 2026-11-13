@@ -5,6 +5,7 @@
 import { BookOpen, CalendarDays, Compass, Dumbbell, LayoutDashboard, Lock, Network, Target, Timer } from "lucide-react";
 import { useId, useState } from "react";
 import { usePomodoro } from "../../store/pomodoro";
+import { useApp } from "../../store/app";
 import { mentorAssignment } from "../../lib/pomodoro";
 import type { WorkKind } from "../../lib/timeLog";
 import { dateLabel } from "../../lib/planSchedule";
@@ -16,6 +17,7 @@ import { focusColour } from "./agendaKit";
 import { ExtraTag } from "./extraKit";
 import { openTopic, openTopicCanvas, openTopicNote } from "./openTopic";
 import { openPlanAgenda, openPlanGeneral, openPlanTopic } from "./mentorNav";
+import { openAgendaAt } from "./planShared";
 import { TopicNoteLinks } from "./TopicNoteLinks";
 import { InsightToggle, TopicInsight } from "./TopicInsight";
 import { ProgressBar } from "./parts";
@@ -43,6 +45,7 @@ export interface BoardRow {
   tag?: { text: string; colour?: string };
   /** etiqueta de tiempo: cuándo toca el tema y si ya pasó su tiempo (pendiente) */
   time?: TopicTimeTag;
+  agendaDate?: string;
   /** minutos de este tema en el día y su texto secundario («Teoría + Práctica»), para las tarjetas de área del resumen */
   minutes?: number;
   sub?: string;
@@ -50,14 +53,16 @@ export interface BoardRow {
   extra?: { remove?: () => void };
   /** si la fila es de Teoría o de Práctica (al asignarla al Pomodoro el bloque nace con ese tipo); sin dato, Teoría */
   work?: "theory" | "practice";
+  outdated?: boolean;
 }
 
 const TIME_COLOUR: Record<TopicTimeTag["status"], string> = { done: "var(--nv-mint)", scheduled: "var(--nv-faint, #888)", current: "var(--nv-accent)", pending: "var(--nv-warn)" };
 
 /** La etiqueta de tiempo de un tema: «Programado · 22 oct», «En su tiempo · 20 oct» o «Pendiente · 15 – 16 oct» (la fecha es la de su reparto). */
-export function TimeChip({ time }: { time: TopicTimeTag }) {
+export function TimeChip({ time, onClick }: { time: TopicTimeTag; onClick?: () => void }) {
   if (time.status === "done") return null;
   const c = TIME_COLOUR[time.status];
+  if (onClick) return <button type="button" onClick={onClick} className="flex-none whitespace-nowrap rounded-md border px-1.5 py-0.5 text-left font-mono text-[11px] font-semibold tracking-wide hover:brightness-125 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent" style={{ color: c, borderColor: `${c}66`, background: `${c}1a` }} data-testid="board-time" data-time-status={time.status} title="Abrir el calendario de planeación para este tema">{time.text} · {time.label}</button>;
   return (
     <span className="flex-none whitespace-nowrap rounded-md border px-1.5 py-0.5 font-mono text-[11px] font-semibold tracking-wide" style={{ color: c, borderColor: `${c}66`, background: `${c}1a` }} data-testid="board-time" data-time-status={time.status}>
       {time.text} · {time.label}
@@ -129,8 +134,14 @@ export function TopicRow({ r, colour, areaKey, planId }: { r: BoardRow; colour: 
         return locked ? <span className={cls}>{label}</span> : <span className={cls}><TopicMenu folder={r.folder} title={r.title} trigger={label} {...(r.work ? { work: r.work } : {})} {...(areaKey ? { areaKey } : {})} planId={planId} className="w-full rounded-md hover:text-accent-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent" /></span>;
       })()}
       <div className="ml-auto flex flex-wrap items-center gap-2">
+        {r.outdated && (
+          <>
+            <button type="button" onClick={() => { void openPlanTopic(planId, r.folder, areaKey); }} className="flex-none rounded-md border border-danger/60 bg-danger-soft px-1.5 py-0.5 text-left font-mono text-[10.5px] font-semibold uppercase tracking-wide text-danger hover:brightness-125 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent" title="Abrir este tema en Planeación para corregir su práctica" data-testid="run-practice-outdated">Práctica desactualizada</button>
+            {r.time && <TimeChip time={r.time} onClick={r.time.status === "current" && planId && r.agendaDate ? () => { openAgendaAt(planId, r.agendaDate!, "dia"); useApp.getState().toast("info", `Agenda abierta para hoy: ${r.title} está en su tiempo (${r.time!.label}).`); } : undefined} />}
+          </>
+        )}
+        {!r.outdated && r.time && <TimeChip time={r.time} onClick={r.time.status === "current" && planId && r.agendaDate ? () => { openAgendaAt(planId, r.agendaDate!, "dia"); useApp.getState().toast("info", `Agenda abierta para hoy: ${r.title} está en su tiempo (${r.time!.label}).`); } : undefined} />}
         {r.extra && <ExtraTag title={r.title} {...(r.extra.remove ? { onRemove: r.extra.remove } : {})} />}
-        {r.time && <TimeChip time={r.time} />}
         {!locked && <TopicNoteLinks folder={r.folder} title={r.title} />}
         {!r.done && !locked && (r.pct ?? 0) > 0 && (
           <span className="flex-none font-mono text-[12px] text-dim" data-testid="board-pct" title="Nivel de avance del tema">{r.pct} %</span>

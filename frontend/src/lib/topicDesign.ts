@@ -330,23 +330,28 @@ export function evaluateTopicDesign(inp: TopicDesignInput): TopicDesign {
 
     // 7. práctica básica y escalera
     const bySkill = new Map<string, Set<number>>();
+    const counts = new Map<string, number>();
     for (const e of inp.exercises) {
       const k = e.skill.toLowerCase();
+      const d = Math.min(3, Math.max(1, Math.round(e.difficulty) || 1));
       if (!bySkill.has(k)) bySkill.set(k, new Set());
-      bySkill.get(k)!.add(Math.min(3, Math.max(1, Math.round(e.difficulty) || 1)));
+      bySkill.get(k)!.add(d);
+      const key = `${k}:${d}`;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
     }
     const noPractice = skills.filter((s) => !bySkill.has(s));
     add("practice_basic", "required", noPractice.length === 0, noPractice.length === 0 ? `${inp.exercises.length} ejercicios` : undefined, noPractice.map((s) => ({ text: `Sin práctica en la skill ${skillName(s)}`, fix: "practice" as const, skill: s, difficulty: requiredDifficulties(s, man!)[0] ?? 1 })));
     const ladder: DesignGap[] = [];
     for (const s of skills) {
-      if (!bySkill.has(s)) continue; // ya cuenta como «sin práctica»
       for (const d of requiredDifficulties(s, man!)) {
-        if (!bySkill.get(s)!.has(d)) ladder.push({ artifact: "practice_ladder", level: "recommended", text: `Sin práctica en la skill ${skillName(s)} a dificultad ${d}`, fix: "practice", skill: s, difficulty: d });
+        const have = counts.get(`${s}:${d}`) ?? 0;
+        const want = man!.plan?.[s]?.[d - 1] ?? 1;
+        if (have < want && !(noPractice.includes(s) && d === (requiredDifficulties(s, man!)[0] ?? 1))) ladder.push({ artifact: "practice_ladder", level: "recommended", text: `Práctica en la skill ${skillName(s)} a dificultad ${d}: ${have} de ${want} ejercicios`, fix: "practice", skill: s, difficulty: d });
       }
     }
     if (noPractice.length === skills.length) {
-      // sin ninguna práctica: la escalera completa depende de la básica; no se enumera celda a celda
       items.push({ id: "practice_ladder", label: artifactLabel.practice_ladder, level: "recommended", ok: false, weight: ARTIFACT_WEIGHT.practice_ladder });
+      gaps.push(...ladder);
     } else {
       items.push({ id: "practice_ladder", label: artifactLabel.practice_ladder, level: "recommended", ok: ladder.length === 0, weight: ARTIFACT_WEIGHT.practice_ladder, ...(ladder.length === 0 ? { found: "todas las dificultades" } : {}) });
       gaps.push(...ladder);

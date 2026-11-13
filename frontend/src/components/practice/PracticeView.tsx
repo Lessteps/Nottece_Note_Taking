@@ -66,6 +66,7 @@ export function PracticeView({ note }: { note: OpenNote }) {
   const secondsOverride = useRef<number | null>(null);
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rel = note.path;
+  const helperChoice = sessionStorage.getItem(`nv.practice.helper:${rel}`);
 
   const toggleTheory = async () => {
     if (showTheory) {
@@ -147,7 +148,7 @@ export function PracticeView({ note }: { note: OpenNote }) {
       setShowSolution(true);
     }
     setEx((cur) => (cur ? { ...cur, history: r.history, pending: null } : cur));
-    setStatus({ text: "Corregido y guardado en tu historial de práctica." });
+    setStatus(r.submissionError ? { text: `La entrega se calificó, pero no se pudo guardar su carpeta: ${r.submissionError}`, error: true } : { text: r.submissionPath ? `Corregido. Entrega guardada en ${r.submissionPath}.` : "Corregido y guardado en tu historial de práctica." });
   };
 
   const handle = (r: PracticeGraded | PracticeWaiting) => {
@@ -226,8 +227,7 @@ export function PracticeView({ note }: { note: OpenNote }) {
         setPending(r);
         if (r.bridge && r.prompt) {
           await copyText(r.prompt);
-          if (r.url) void api.openExternal(r.url).catch(() => undefined);
-          setStatus({ text: `Prompt de corrección copiado al portapapeles${r.url ? ` y abierta la web de ${r.label}` : ""}. Pégalo allí, copia la respuesta (el bloque JSON) y pulsa «Pegar corrección».` });
+          setStatus({ text: "Prompt de corrección copiado al portapapeles. Pégalo en tu asistente, copia la respuesta y pulsa «Pegar corrección»." });
         } else {
           const invocation = `Corrige la solicitud de práctica de NoteVault que está en ${r.request_path}: sigue sus instrucciones y escribe solo el JSON de la corrección en ${r.response_file}.`;
           await copyText(invocation);
@@ -268,7 +268,8 @@ export function PracticeView({ note }: { note: OpenNote }) {
 
   const hint = async () => {
     if (!ex || hints >= ex.hints.length) return;
-    if (ex.assistance === "nohelp" && hints === 0
+    if (helperChoice === "0") { setStatus({ text: "El modo sin ayuda está activo para esta práctica.", error: true }); return; }
+    if (helperChoice !== "1" && ex.assistance === "nohelp" && hints === 0
       && !(await confirmAction("Ejercicio sin ayuda", "Este ejercicio está pensado para hacerse sin pistas. ¿Ver la primera igualmente?", "Ver pista"))) return;
     setHints(hints + 1);
   };
@@ -351,9 +352,9 @@ export function PracticeView({ note }: { note: OpenNote }) {
 
   return (
     <div className="h-full overflow-y-auto nv-practice-view">
-      <div className={cn("mx-auto flex flex-col gap-4 py-6 w-full", isWideLayout ? "max-w-7xl px-4 sm:px-6 lg:px-8" : "max-w-[860px] px-8")}>
+      <div className={cn("mx-auto flex min-w-0 flex-col gap-4 py-4 w-full", isWideLayout ? "max-w-7xl px-3 sm:px-6 lg:px-8" : "max-w-[860px] px-3 sm:px-6")}>
         <header className="flex flex-wrap items-start gap-4">
-          <div className="min-w-[15rem] flex-1">
+          <div className="min-w-0 flex-1">
             <h1 className="break-words text-[22px] font-bold tracking-tight text-text">{ex.title}</h1>
             <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-dim">
               <span>{SUBJECTS[ex.subject] ?? ex.subject}</span>·
@@ -526,6 +527,13 @@ export function PracticeView({ note }: { note: OpenNote }) {
                     starterCode={starterCode}
                     placeholder={PLACEHOLDERS[ex.mode.id] ?? "Escribe tu solución de código aquí..."}
                     mode={ex.mode.id}
+                    onImportFile={async () => {
+                      const file = await api.practicePickCodeFile();
+                      if (!file?.text) return;
+                      const block = file.text;
+                      const next = answer.trim() ? `${answer.replace(/\s*$/, "")}\n\n${block}` : block;
+                      onAnswer(next);
+                    }}
                   />
                 )
               ) : (
@@ -583,7 +591,7 @@ export function PracticeView({ note }: { note: OpenNote }) {
                   </button>
                 </>
               )}
-              {ex.hints.length > 0 && !graded && (
+              {ex.hints.length > 0 && !graded && helperChoice !== "0" && (
                 <button type="button" disabled={hints >= ex.hints.length} onClick={() => void hint()}
                   className="flex items-center gap-1.5 rounded-lg border border-line px-3 py-2 text-[12.5px] text-dim hover:bg-hover hover:text-text disabled:opacity-50">
                   <Lightbulb size={14} /> {hints >= ex.hints.length ? "No hay más pistas" : `Ver pista ${hints + 1} de ${ex.hints.length}`}
@@ -603,6 +611,8 @@ export function PracticeView({ note }: { note: OpenNote }) {
         {status && (
           <p role="status" className={cn("text-[12.5px] leading-relaxed", status.error ? "text-danger" : "text-dim")}>{status.text}</p>
         )}
+
+        {result?.submissionPath && <button type="button" onClick={() => void api.revealPath(result.submissionPath!).catch((e: Error) => toast("error", e.message))} className="self-start rounded-lg border border-line px-3 py-1.5 text-[12.5px] text-accent-text hover:bg-hover" data-testid="practice-open-submission">Abrir carpeta de entrega</button>}
 
         {result && <ResultCard result={result.result} quality={result.quality} rubric={ex.rubric} onRetry={retry} />}
 

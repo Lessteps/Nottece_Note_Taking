@@ -84,8 +84,9 @@ describe("Temas por área — selección y filtro", () => {
     await check("B");
     expect(byTest("bulk-count")!.textContent).toBe("1 tema seleccionado");
     expect(bulk("bulk-missing").disabled).toBe(false);
-    // «Regenerar» espera a que se marque qué regenerar
-    expect(bulk("bulk-regen").disabled).toBe(true);
+    // Sin categoría, la acción genera lo que falta de los temas elegidos.
+    expect(bulk("bulk-regen").disabled).toBe(false);
+    expect(bulk("bulk-regen").textContent).toContain("Generar lo que falta");
     await click("bulk-check-theory");
     expect(bulk("bulk-regen").disabled).toBe(false);
     expect(bulk("bulk-regen").textContent).toContain("Regenerar teoría");
@@ -103,6 +104,13 @@ describe("Temas por área — selección y filtro", () => {
     expect(byTest("bulk-count")!.textContent).toBe("4 temas seleccionados");
     await click("select-all");
     expect(byTest("bulk-count")!.textContent).toContain("Selecciona temas");
+  });
+
+  it("no cuenta como completo un tema con piezas desactualizadas", async () => {
+    vi.mocked(api.mentorPlanTopicCatalog).mockResolvedValue({ loading: false, rows: [row("A", { outdated: { practica: true } }), ...ROWS.slice(1)] });
+    await mount();
+    await click("status-filter-complete");
+    expect(rows()).not.toContain("A");
   });
 
   it("el filtro por estado reduce la tabla y «seleccionar todos» solo toma lo visible", async () => {
@@ -284,14 +292,46 @@ describe("Temas por área — lote", () => {
     expect(start).toHaveBeenCalledWith(F("C"), "practice", true, "app");
   });
 
-  it("«Generar lo que falta» abre el diálogo de «Ejecutar plan» con el alcance del primer tema elegido", async () => {
+  it("sin categorías abre la generación para el tema con ejercicios parcialmente faltantes", async () => {
+    vi.mocked(api.mentorPlanTopicCatalog).mockResolvedValue({ loading: false, rows: [row("A", { exercises: 5, planExercises: 9 }), ...ROWS.slice(1)] });
     await mount();
-    await check("A"); // completo: no tiene nada que generar
+    await check("A");
+    await click("bulk-regen");
+    await flush();
+    expect(byTest("batch-missing-review")!.textContent).toContain("A: exercises");
+  });
+
+  it("agrupa temas incompletos y desactualizados en una tarea", async () => {
+    await mount();
+    await check("B");
     await check("C");
     await click("bulk-missing");
-    await flush(); await flush();
-    expect(byTest("exec-scope-topic")!.textContent).toContain("C");
-    expect(api.mentorExecutionReport).toHaveBeenCalledWith("p1", expect.objectContaining({ mode: "topic", folder: F("C") }));
+    const review = byTest("batch-missing-review")!.textContent!;
+    expect(review).toContain("B: theory");
+    expect(review).toContain("C: exercises");
+    const create = vi.spyOn(api, "studyTopicRegenerateHandoff").mockResolvedValue({ id: "h1", what: "all", status: "waiting", prompt: "prompt", topics: [], ready: { found: 0, expected: 1 }, log: [] } as never);
+    await click("batch-missing-create");
+    expect(create).toHaveBeenCalledWith([F("B"), F("C")], "all", true, { missingOnly: true, includeRecommended: true, work: [{ folder: F("B"), steps: ["theory"] }, { folder: F("C"), steps: ["exercises"] }] });
+    expect(byTest("handoff-regen-prompt")!.textContent).toBe("prompt");
+  });
+
+  it("incluye un tema completo por cantidad con práctica desactualizada", async () => {
+    vi.mocked(api.mentorPlanTopicCatalog).mockResolvedValue({ loading: false, rows: [row("A", { planExercises: 5, outdated: { practica: true } }), ...ROWS.slice(1)] });
+    await mount();
+    await check("A");
+    await click("bulk-missing");
+    expect(byTest("batch-missing-review")!.textContent).toContain("A: practice, exercises");
+    expect((byTest("batch-missing-internal") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("permite incluir un tema sin ejercicios aunque se marque la estructura como desactualizada", async () => {
+    vi.mocked(api.mentorPlanTopicCatalog).mockResolvedValue({ loading: false, rows: [row("A", { exercises: 0, complete: false, practiceMismatch: true }), ...ROWS.slice(1)] });
+    await mount();
+    await check("A");
+    await click("bulk-missing");
+    const create = vi.spyOn(api, "studyTopicRegenerateHandoff").mockResolvedValue({ id: "h2", what: "all", status: "waiting", prompt: "prompt", topics: [], ready: { found: 0, expected: 1 }, log: [] } as never);
+    await click("batch-missing-create");
+    expect(create).toHaveBeenCalledWith([F("A")], "all", true, expect.objectContaining({ work: [{ folder: F("A"), steps: ["exercises"] }] }));
   });
 
   it("«Generar lo que falta» sin nada pendiente avisa y no abre nada", async () => {

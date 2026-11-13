@@ -19,22 +19,18 @@ import {
   Package,
   Lightbulb,
   Info,
-  ChevronRight,
   ChevronLeft,
   ChevronDown,
   ArrowRight,
   Code2,
   ListChecks,
   Sparkles,
-  Copy,
   TerminalSquare,
   Eye,
   FileCode2,
   RefreshCw,
   Sliders,
-  ExternalLink,
   ShieldCheck,
-  AlertCircle,
 } from "lucide-react";
 import { cn } from "../ui";
 import { api } from "../../lib/bridge";
@@ -82,7 +78,7 @@ export function parseLabRequirements(stmt: string, discipline = "python"): LabRe
   }
 
   // Extraer tokens en backticks
-  const codeMatches = Array.from(stmt.matchAll(/`([^`]+)`/g)).map((m) => m[1].trim());
+  const codeMatches = Array.from(stmt.matchAll(/`([^`]+)`/g)).map((m) => m[1]!.trim());
 
   const reqPaths: string[] = [];
   const reqCmds: string[] = [];
@@ -664,12 +660,6 @@ export function ProjectStructureLab({
   // Step 1: File Explorer View
   const [step1SubTab, setStep1SubTab] = useState<"ascii" | "explorer">("ascii");
   const [activeExplorerFile, setActiveExplorerFile] = useState<string | null>("main.py");
-  const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({
-    ".venv/": true,
-    "utils/": true,
-    "tests/": true,
-  });
-
   // Step 2: Live Terminal State
   const [step2SubTab, setStep2SubTab] = useState<"sequence" | "terminal">("sequence");
   const [terminalLogs, setTerminalLogs] = useState<Array<{ text: string; kind?: "cmd" | "stdout" | "stderr" | "info" | "success" | "error" }>>([]);
@@ -690,7 +680,7 @@ export function ProjectStructureLab({
     const lines = value.split("\n").map((l) => l.trim());
     const treeLines: string[] = [];
     const cmdLines: string[] = [];
-    let section: "tree" | "cmds" | "notes" = "tree";
+    let section: "tree" | "cmds" | "notes" | "term" = "tree";
 
     for (const l of lines) {
       if (/^###\s*Estructura/i.test(l)) {
@@ -890,8 +880,6 @@ export function ProjectStructureLab({
   const structureChecksDone = structureChecklist.filter((c) => c.done).length;
 
   // File explorer tree model
-  const explorerTree = useMemo(() => buildExplorerTree(paths), [paths]);
-
   // Terminal Runner Simulation Fallback (for offline or test environments)
   const runSimulatedFallback = (cmdsToRun: string[], pathsToUse: string[]) => {
     const logs: Array<{ text: string; kind?: "cmd" | "stdout" | "stderr" | "info" | "success" | "error" }> = [
@@ -1251,9 +1239,9 @@ export function ProjectStructureLab({
           )}
 
           {/* Workspace Horizontal Dividido en 2 Columnas Anchas */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start w-full">
+          <div className="grid min-w-0 grid-cols-1 gap-4 items-start w-full xl:grid-cols-12 xl:gap-6">
             {/* LADO IZQUIERDO (6 cols): Constructor de la Estructura */}
-            <div className="lg:col-span-6 flex flex-col rounded-xl border border-line bg-card p-5 space-y-4 shadow-xs">
+            <div className="min-w-0 xl:col-span-6 flex flex-col rounded-xl border border-line bg-card p-3 sm:p-5 space-y-4 shadow-xs">
               <div className="flex items-center justify-between pb-3 border-b border-line">
                 <div className="flex items-center gap-2">
                   <Folder size={17} className="text-accent-text" />
@@ -1702,7 +1690,7 @@ export function ProjectStructureLab({
           )}
 
           {/* Espacio Horizontal de 2 Columnas para Comandos */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start w-full">
+          <div className="grid min-w-0 grid-cols-1 gap-4 items-start w-full xl:grid-cols-12 xl:gap-6">
             {/* Comandos disponibles y entrada personalizada (6 cols) */}
             <div className="lg:col-span-6 rounded-xl border border-line bg-card p-5 space-y-4 shadow-xs">
               <div className="flex items-center justify-between pb-3 border-b border-line">

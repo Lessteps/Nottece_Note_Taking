@@ -58,7 +58,7 @@ const click = async (el: Element | null | undefined) => {
   await act(async () => { el!.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
   await flush();
 };
-const byTest = (id: string) => host.querySelector<HTMLElement>(`[data-testid=${id}]`);
+const byTest = (id: string) => (id === "board-menu" ? document : host).querySelector<HTMLElement>(`[data-testid=${id}]`);
 const all = (id: string) => [...host.querySelectorAll<HTMLElement>(`[data-testid=${id}]`)];
 /** la pestaña de la ejecución: `general`, `area:<subplan>`, `bases`, `proyectos` */
 const runTab = (id: string) => host.querySelector<HTMLElement>(`[data-testid="nav-ej:${id}"]`);
@@ -116,6 +116,18 @@ describe("vista de ejecución", () => {
     expect(host.textContent).not.toContain("Con práctica");
     await click(runTab("area:s2"));
     expect(work().querySelector("h2")!.textContent).toBe("Python");
+  });
+
+  it("permite alternar entre la ruta interactiva y la informativa de un área", async () => {
+    vi.spyOn(api, "mentorPlanGet").mockResolvedValue(loaded());
+    await mountEl(<PlanWorkspace planId={PID} />);
+    await click(runTab("area:s1"));
+    await click(runTab("area:s1:interactiva"));
+    expect(byTest("interactive-route")).toBeTruthy();
+    expect(runTab("area:s1:interactiva")!.getAttribute("aria-current")).toBe("page");
+    await click(runTab("area:s1:informativa"));
+    expect(byTest("interactive-route")).toBeNull();
+    expect(byTest("area-work")).toBeTruthy();
   });
 
   it("la vista general: áreas de hoy plegables, «Lo que viene» por día, tarjeta de Pomodoro y «Asignar temas»", async () => {
@@ -295,7 +307,7 @@ describe("vista de ejecución", () => {
     const menu = byTest("board-menu")!;
     expect(menu.getAttribute("role")).toBe("menu");
     expect([...menu.querySelectorAll("[role=menuitem]")].map((b) => b.textContent!.trim())).toEqual(["Abrir apunte (.md)", "Abrir archivo de práctica", "Abrir canvas explicativo", "Asignar al Pomodoro", "Ir a la planeación"]);
-    await click(byTest("board-open-practice"));
+    await click(document.querySelector("[data-testid=board-open-practice]"));
     expect(ensure).toHaveBeenCalledWith(F1);
     expect(byTest("board-menu")).toBeNull();
   });
@@ -477,7 +489,7 @@ describe("vista de ejecución", () => {
     // el acceso directo: la flecha de un kata atrasado abre ESE kata aunque su archivo aún no exista
     await click(rows[1]!.querySelector("[data-testid=board-arrow]"));
     expect([...byTest("board-menu")!.querySelectorAll("[role=menuitem]")].map((b) => b.textContent!.trim())).toEqual(["Abrir kata (.md)", "Verificar y marcar hecho", "Saltar este día (pide 70 %)", "Asignar al Pomodoro", "Ver práctica de Backend"]);
-    await click(byTest("kata-open"));
+    await click(document.querySelector("[data-testid=kata-open]"));
     expect(open).toHaveBeenCalledWith(PID, "backend", "2026-10-07");
     // y se marca el día concreto con la casilla
     await click(rows[1]!.querySelector("[data-testid=kata-check]"));

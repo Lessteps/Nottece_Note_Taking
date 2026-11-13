@@ -920,7 +920,11 @@ export function studyApi(app: AppState) {
         topic: manifestWithRelPaths,
         progress,
         theory_notes: theoryNotes,
-        exercises: topicExercises.map((e) => exerciseDict(e, studyRel(app, e.path))),
+        exercises: topicExercises.map((e) => {
+          const savedAttempts = attempts[e.note_id]?.attempts;
+          const history = Array.isArray(savedAttempts) ? savedAttempts : [];
+          return { ...exerciseDict(e, studyRel(app, e.path)), mode_id: e.mode, skill_id: e.skill, completed: history.some((a: Record<string, unknown>) => attemptPassed(a)), history };
+        }),
         can_convert: false,
       };
     },
@@ -960,6 +964,7 @@ export function studyApi(app: AppState) {
       difficulty: number,
       quantity = "3-5",
       assistance = "no_help",
+      fillOnly = false,
     ) {
       const normFolder = app.rel(app.resolve(folder, { allowRoot: true }));
       const found = findTopicManifest(app, normFolder);
@@ -1025,7 +1030,7 @@ export function studyApi(app: AppState) {
           quantity: qty,
           assistance: ast,
           planCount: aiCount,
-          learning: learningPromptLines(app.root, normFolder.replace(/\\/g, "/"), skill),
+          learning: fillOnly ? [] : learningPromptLines(app.root, normFolder.replace(/\\/g, "/"), skill),
           taughtBefore: taughtBeforeOf(absDir),
           ...vocabularyWords(app, found.manifest.subject, skill, found.manifest.title),
         },

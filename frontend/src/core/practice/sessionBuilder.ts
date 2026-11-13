@@ -144,7 +144,7 @@ export function buildExerciseGenerationPrompt(
     "2. Never produce generic textbook filler or boilerplate problems.",
     isHelper
       ? "3. Assistance mode is HELPER: hints MUST give progressive, step-by-step guidance on what technique to use and why, NEVER revealing the full final solution."
-      : "3. Assistance mode is NO HELP: hints must be minimal or absent (naming only the general failure mode to watch out for).",
+      : "3. Include 1–3 optional progressive hints for every exercise without giving the answer. Show them only if the learner enables Helper; no-help attempts remain possible.",
     "4. Output format: You must return a valid JSON array of exercise objects. No other markdown commentary.",
     "Each object must have:",
     `  "title": string (concise descriptive title in Spanish)`,

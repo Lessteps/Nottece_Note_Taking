@@ -222,7 +222,7 @@ export function buildExecutionReport(inp: ReportInput, scopeIn: Partial<Executio
       tasks.push({ id: id("manifest"), kind: "manifest", ...base, title: t.title, required: true, aiCalls: 1, files: 1, label: `Manifiesto de práctica de «${shortTitle(t.title)}»`, dependsOn: generated ? [id("theory")] : [] });
     }
     if (practiceUnknown) {
-      tasks.push({ id: id("practice"), kind: "practice", ...base, title: t.title, required: true, aiCalls: 4, files: 16, label: `Ejercicios de «${shortTitle(t.title)}» (una skill tras otra)`, dependsOn: tasks.length ? [tasks[tasks.length - 1]!.id] : [], args: { cells: [], unknown: true } });
+      tasks.push({ id: id("practice"), kind: "practice", ...base, title: t.title, required: true, aiCalls: 4, files: 16, label: `Ejercicios de «${shortTitle(t.title)}» (una skill tras otra)`, dependsOn: tasks.length ? [tasks[tasks.length - 1]!.id] : [], args: { cells: [], unknown: true, includeRecommended: scope.includeRecommended } });
     } else if (cells.length) {
       const req = cells.filter((c) => c.required);
       const dep = tasks.length ? [tasks[tasks.length - 1]!.id] : [];
@@ -236,7 +236,7 @@ export function buildExecutionReport(inp: ReportInput, scopeIn: Partial<Executio
         files: cells.length * 4,
         label: `Ejercicios de «${shortTitle(t.title)}»: ${[...new Set(cells.map((c) => c.skill))].join(", ")}`,
         dependsOn: dep,
-        args: { cells: cells.map((c) => ({ skill: c.skill, difficulty: c.difficulty })) },
+        args: { cells: cells.map((c) => ({ skill: c.skill, difficulty: c.difficulty })), includeRecommended: scope.includeRecommended },
       });
     }
     if (manualGaps.length) manual.push({ folder: t.folder, title: t.title, gaps: manualGaps });

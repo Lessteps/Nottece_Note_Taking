@@ -14,6 +14,7 @@ import { dateLabel, longDateLabel, type ScheduleDay } from "../../lib/planSchedu
 import { usePomodoro } from "../../store/pomodoro";
 import { Chip, GhostButton, PrimaryButton } from "../common/forms";
 import { cn } from "../ui";
+import { useModuleVisible } from "../ModuleHost";
 import { plural } from "./agendaKit";
 import { hm, ProgressBar } from "./parts";
 import { TimeChip, TopicMenu, type BoardRow } from "./PlanBoard";
@@ -238,11 +239,13 @@ export function FocusCard({ areaKey, planId, session, loggedMinutes, goalMinutes
   const p = usePomodoro((s) => s.p);
   const { start, pause, resume, setDurations } = usePomodoro.getState();
   const [now, setNow] = useState(() => Date.now());
+  const visible = useModuleVisible();
   useEffect(() => {
-    if (p.phase === "idle") return;
+    if (!visible || p.phase === "idle" || !p.running) return;
+    setNow(Date.now());
     const t = setInterval(() => setNow(Date.now()), 500);
     return () => clearInterval(t);
-  }, [p.phase]);
+  }, [p.phase, p.running, visible]);
   const idle = p.phase === "idle";
   const left = idle ? p.focusMin * 60_000 : remainingMs(p, now);
   const status = idle ? `Bloque de ${p.focusMin} min listo` : p.phase === "break" ? "Descanso" : p.running ? "En foco" : "En pausa";

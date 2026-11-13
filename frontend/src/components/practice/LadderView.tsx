@@ -5,7 +5,6 @@ import {
   ArrowDown, ArrowUp, BookOpen, Check, ClipboardPaste, Eye, FileOutput, GripVertical, Lock, Send, X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { create } from "zustand";
 import { api } from "../../lib/bridge";
 import { copyText, readClipboard } from "../../lib/clipboard";
 import { initialTimer, type TimerState } from "../../lib/practiceTimer";
@@ -15,25 +14,8 @@ import { cn, confirmAction } from "../ui";
 import { useStudyVersion } from "../study/StudyPanel";
 import { md, ResultCard, TimerBox, useClock } from "./common";
 
-const PROOF_TYPES = new Set(["theorem", "teorema", "proof", "demostracion", "lemma", "lema",
-  "proposition", "proposicion", "corollary", "corolario"]);
-
-/** A theorem note the ladder may practise (Python checks it has steps). */
-export function isProofNote(fm: Record<string, unknown> | undefined): boolean {
-  const t = String(fm?.type ?? "").trim().toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "");
-  return PROOF_TYPES.has(t);
-}
-
-/** Notes currently shown as a ladder instead of their text. */
-export const useLadder = create<{ open: Set<string>; set: (path: string, on: boolean) => void }>((set) => ({
-  open: new Set(),
-  set: (path, on) => set((s) => {
-    const open = new Set(s.open);
-    if (on) open.add(path);
-    else open.delete(path);
-    return { open };
-  }),
-}));
+import { isProofNote, useLadder } from "../../store/ladder";
+export { isProofNote, useLadder };
 
 const FIELD = "w-full resize-y rounded-lg border border-line bg-panel p-3 text-[14px] leading-relaxed text-text outline-none placeholder:text-faint focus:border-accent";
 

@@ -17,7 +17,8 @@ import type { MentorExecutionView, MentorPlan as PlanData, MentorPlanGet, Mentor
 import { useApp } from "../../store/app";
 import { useMentor } from "../../store/mentor";
 import { useNavState } from "../../store/navState";
-import { ExecutionPanel } from "./PlanExecution";
+import { ExecutionPanel, ReportList, useExecution } from "./PlanExecution";
+import { ModuleVisible } from "../ModuleHost";
 import type { CoverageState } from "./PlanCoverage";
 
 const ui = vi.hoisted(() => ({ askText: vi.fn(), confirmAction: vi.fn() }));
@@ -82,6 +83,38 @@ afterEach(() => {
   host.remove();
   document.body.innerHTML = "";
   vi.restoreAllMocks();
+});
+
+describe("consultas de ejecución en segundo plano", () => {
+  it("deja de consultar al ocultar el Mentor y actualiza al volver", async () => {
+    const status = vi.mocked(api.mentorExecutionStatus);
+    status.mockResolvedValue({ execution: view(), active: true });
+    function Probe() { useExecution(PID); return null; }
+    vi.useFakeTimers();
+    try {
+      await mountEl(<ModuleVisible.Provider value={true}><Probe /></ModuleVisible.Provider>);
+      expect(status).toHaveBeenCalledTimes(1);
+      await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
+      expect(status).toHaveBeenCalledTimes(2);
+      await act(async () => { root.render(<ModuleVisible.Provider value={false}><Probe /></ModuleVisible.Provider>); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(6000); });
+      expect(status).toHaveBeenCalledTimes(2);
+      await act(async () => { root.render(<ModuleVisible.Provider value={true}><Probe /></ModuleVisible.Provider>); });
+      expect(status).toHaveBeenCalledTimes(3);
+    } finally { vi.useRealTimers(); }
+  });
+});
+
+describe("Informe de generación", () => {
+  it("alterna áreas sin leer un evento liberado durante la actualización", async () => {
+    await mountEl(<ReportList report={report()} />);
+    const area = host.querySelector<HTMLDetailsElement>("[data-testid=exec-area]")!;
+    expect(area.open).toBe(true);
+    await act(async () => { area.open = false; area.dispatchEvent(new Event("toggle")); });
+    expect(area.open).toBe(false);
+    await act(async () => { area.open = true; area.dispatchEvent(new Event("toggle")); });
+    expect(area.open).toBe(true);
+  });
 });
 
 describe("«Analizar el plan»", () => {
@@ -180,6 +213,21 @@ describe("diálogo de confirmación", () => {
     await click(radio("Solo un área"));
     expect(rep).toHaveBeenLastCalledWith(PID, expect.objectContaining({ mode: "area", areaKey: "backend" }));
     expect(dlg().textContent).toContain("solo el área Backend");
+  });
+
+  it("ofrece el prompt externo para completar ejercicios sin IA interna", async () => {
+    const folder = F("4.1 A");
+    const base = report();
+    const task = { ...base.tasks[0]!, kind: "practice" as const, folder };
+    const single = { ...base, tasks: [task], totals: { ...base.totals, tasks: 1 } };
+    vi.spyOn(api, "mentorExecutionReport").mockResolvedValue({ loading: false, report: single, execution: null, aiConfigured: false });
+    const handoff = { id: "external-1", what: "exercises", missingOnly: true, status: "waiting", prompt: "Prompt de prueba", topics: [{ title: "Tema", state: "pending", problems: [], created: [], done: [] }], ready: { found: 0, expected: 1 }, log: [] } as never;
+    const create = vi.spyOn(api, "studyTopicRegenerateHandoff").mockResolvedValue(handoff);
+    const { ExecuteDialog } = await import("./PlanExecution");
+    await mountEl(<ExecuteDialog planId={PID} proposed={false} initialScope={{ mode: "topic", folder, includeRecommended: true, includeAreaPractice: false, includeNewTopics: false, includeKatasAi: false }} onClose={vi.fn()} onStarted={vi.fn()} />);
+    await click(document.querySelector("[data-testid=exec-external]"));
+    expect(create).toHaveBeenCalledWith(folder, "exercises", true, { missingOnly: true, includeRecommended: true });
+    expect(document.querySelector("[data-testid=handoff-regen-prompt]")?.textContent).toBe("Prompt de prueba");
   });
 
   it("sin IA: el botón del diálogo está desactivado y lo explica", async () => {

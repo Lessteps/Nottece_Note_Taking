@@ -42,6 +42,8 @@ export interface PlanTopicRow {
   gaps: number;
   /** piezas hechas con una versión anterior de su skill (la skill cambió después de generarlas); ver `api/modules/skillFreshness.ts` */
   outdated?: OutdatedSkills;
+  /** existe un problema estructural o de versión en las piezas de práctica */
+  practiceMismatch?: boolean;
 }
 
 /** Qué piezas de un tema quedaron atrás respecto de su skill: la nota de teoría, el mapa explicativo y el manifiesto `.practica`. */

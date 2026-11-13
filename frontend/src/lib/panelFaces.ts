@@ -12,8 +12,9 @@ import { useSourcesPanel } from "../components/english/SourcesPanel";
 import { useRecordingsPanel } from "../components/english/RecordingsPanel";
 import { useCodePanel } from "../store/codePanel";
 import { useSkillsPanel } from "../store/skillsPanel";
+import { useRegenTasksPanel } from "../store/regenTasksPanel";
 
-export type Face = "assistant" | "pages" | "review" | "inspector" | "muscle" | "ink" | "sources" | "recordings" | "code" | "skills";
+export type Face = "assistant" | "pages" | "review" | "inspector" | "muscle" | "ink" | "sources" | "recordings" | "code" | "skills" | "regenTasks";
 
 export function isFaceOpen(face: Face): boolean {
   switch (face) {
@@ -27,6 +28,7 @@ export function isFaceOpen(face: Face): boolean {
     case "recordings": return useRecordingsPanel.getState().open;
     case "code": return useCodePanel.getState().open;
     case "skills": return useSkillsPanel.getState().open;
+    case "regenTasks": return useRegenTasksPanel.getState().open;
   }
 }
 
@@ -42,10 +44,11 @@ export function closeFace(face: Face): void {
     case "recordings": useRecordingsPanel.getState().setOpen(false); break;
     case "code": useCodePanel.getState().setOpen(false); break;
     case "skills": useSkillsPanel.getState().setOpen(false); break;
+    case "regenTasks": useRegenTasksPanel.getState().setOpen(false); break;
   }
 }
 
-const ALL: Face[] = ["assistant", "pages", "review", "inspector", "muscle", "ink", "sources", "recordings", "code", "skills"];
+const ALL: Face[] = ["assistant", "pages", "review", "inspector", "muscle", "ink", "sources", "recordings", "code", "skills", "regenTasks"];
 
 /** Opens `face` (closing every other one), or closes it when it is already open. */
 export function toggleFace(face: Face): void {
@@ -65,5 +68,6 @@ export function toggleFace(face: Face): void {
     case "recordings": useRecordingsPanel.getState().setOpen(true); break;
     case "code": useCodePanel.getState().setOpen(true); break;
     case "skills": useSkillsPanel.getState().setOpen(true); break;
+    case "regenTasks": useRegenTasksPanel.getState().setOpen(true); break;
   }
 }

@@ -29,7 +29,7 @@ export function confirmCopy(what: RegenWhat, row: Pick<AreaTopicRow, "title" | "
       lead: `Se va a REEMPLAZAR la nota de teoría de «${row.title}» por una nueva escrita por la IA.`,
       points: [
         "Antes se hace una copia de seguridad de la nota actual y de su canvas en la carpeta .trash de tu vault.",
-        "También se vuelve a generar su canvas explicativo; si lo habías editado a mano, el nuevo se guarda aparte como «… .nuevo.canvas».",
+        "También se vuelve a generar su canvas explicativo; la versión anterior queda respaldada en la papelera.",
         "Si la generación falla, se restaura la nota anterior.",
       ],
     };
@@ -40,7 +40,7 @@ export function confirmCopy(what: RegenWhat, row: Pick<AreaTopicRow, "title" | "
       points: [
         "No usa la IA: el mapa se construye de la nota que ya existe.",
         "Antes se hace una copia de seguridad de los canvas actuales en la carpeta .trash de tu vault.",
-        "Si habías editado el canvas a mano, se conserva y el nuevo se guarda aparte como «… .nuevo.canvas».",
+        "La versión anterior queda respaldada en la papelera, también si la habías editado a mano.",
       ],
     };
   }

@@ -11,9 +11,9 @@ import { RegenHandoffPanel } from "./RegenHandoffPanel";
 const WHAT: Record<RegenHandoff["what"], string> = { theory: "teoría", practice: "práctica", exercises: "ejercicios", all: "todo", "theory+practice": "teoría y práctica", "theory+exercises": "teoría y ejercicios", "practice+exercises": "práctica y ejercicios" };
 const STATUS: Record<RegenHandoff["status"], string> = { waiting: "pendiente", failed: "pendiente (con errores)", validated: "validada", restored: "restaurada" };
 
-export function ExternalTasks() {
+export function ExternalTasks({ panel = false }: { panel?: boolean }) {
   const [saved, setSaved] = useState<RegenHandoff[]>([]);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(panel);
   const live = useRegenEngine((s) => s.handoffs);
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
 
@@ -23,14 +23,13 @@ export function ExternalTasks() {
       .then((l) => Array.isArray(l) && setSaved(l))
       .catch(() => undefined);
   }, []);
-  useEffect(load, [load]);
   // al validar o crear una tarea, la lista se vuelve a leer
   const liveKey = Object.values(live).map((h) => `${h.id}:${h.status}`).join("|");
   useEffect(load, [load, liveKey]);
 
   // la copia en memoria (más reciente) manda sobre la guardada
   const tasks = saved.filter((h) => !hidden.has(h.id)).map((h) => live[h.id] ?? h);
-  if (tasks.length === 0) return null;
+  if (tasks.length === 0) return panel ? <p className="p-3 text-sm text-dim">No hay tareas de regeneración guardadas.</p> : null;
   const pending = tasks.filter((h) => h.status === "waiting" || h.status === "failed").length;
   return (
     <section className="rounded-xl border border-line bg-card" data-testid="external-tasks">
@@ -54,6 +53,7 @@ export function ExternalTasks() {
               </p>
               <RegenHandoffPanel
                 handoff={h}
+                allowHidePending={!panel}
                 onClose={() => setHidden((s) => new Set(s).add(h.id))}
               />
             </li>

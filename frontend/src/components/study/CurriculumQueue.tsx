@@ -19,6 +19,7 @@ import { GhostButton, PrimaryButton } from "../common/forms";
 import { ProgressBar } from "../mentor/parts";
 import { AddToPlan, refreshEverything, selectablePlans } from "./CurriculumHandoffPanel";
 import { useMentor } from "../../store/mentor";
+import { useModuleVisible } from "../ModuleHost";
 
 export function CurriculumQueue({ areaId, areaTitle, missing, essentials, withExercises }: { areaId: string; areaTitle: string; missing: number; essentials: number; withExercises: boolean }) {
   const toast = useApp((s) => s.toast);
@@ -34,6 +35,7 @@ export function CurriculumQueue({ areaId, areaTitle, missing, essentials, withEx
   const jobId = useRef("");
   const autoRun = useCurriculum((st) => st.autoRun);
   const touched = useRef(false);
+  const isVisible = useModuleVisible();
 
   // ¿puede la app escribir los temas ella sola? Si sí, ese es el modo por omisión
   useEffect(() => {
@@ -60,15 +62,22 @@ export function CurriculumQueue({ areaId, areaTitle, missing, essentials, withEx
 
   // el progreso del trabajo automático (cada segundo mientras corre)
   useEffect(() => {
-    if (!job || job.done) return;
-    const t = setInterval(() => {
+    if (!job || job.done || !isVisible) return;
+    let active = true;
+    let pending = false;
+    const poll = () => {
+      if (pending) return;
+      pending = true;
       api.studyCurriculumAutoStatus(jobId.current).then((j) => {
+        if (!active) return;
         setJob(j);
         if (j.done) refreshEverything();
-      }).catch(() => undefined);
-    }, 1000);
-    return () => clearInterval(t);
-  }, [job?.id, job?.done]);
+      }).catch(() => undefined).finally(() => { pending = false; });
+    };
+    poll();
+    const t = setInterval(poll, 1000);
+    return () => { active = false; clearInterval(t); };
+  }, [job?.id, job?.done, isVisible]);
 
   const startAuto = async (importance?: string): Promise<void> => {
     setBusy("make");
@@ -92,16 +101,16 @@ export function CurriculumQueue({ areaId, areaTitle, missing, essentials, withEx
     useCurriculum.getState().createBatches({ areaId, refreshOnly: true, withExercises }).then((q) => setPrompt(q.master.shortPrompt)).catch(() => undefined);
   }, [queue.length, prompt, areaId, withExercises]);
 
-  // el avance REAL en disco (carpeta, nota, manifiesto): la app no siempre se entera sola de lo que escribe un agente externo, así que se mira cada 5 s
+  // el avance REAL en disco (carpeta, nota, manifiesto): la app no siempre se entera sola de lo que escribe un agente externo, así que se mira cada 5 s (solo visible)
   const ids = queue.map((h) => h.id).join("|");
   useEffect(() => {
-    if (!ids || mode !== "manual") return;
+    if (!ids || mode !== "manual" || !isVisible) return;
     const poll = (): void => {
       for (const id of ids.split("|")) void useCurriculum.getState().status(id).catch(() => undefined);
     };
     const t = setInterval(poll, 5000);
     return () => clearInterval(t);
-  }, [ids, mode]);
+  }, [ids, mode, isVisible]);
   const written = queue.reduce((n, h) => n + h.ready.found, 0);
   const expected = queue.reduce((n, h) => n + h.ready.expected, 0);
 

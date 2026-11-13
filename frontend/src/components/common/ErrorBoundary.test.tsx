@@ -9,7 +9,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ErrorBoundary } from "./ErrorBoundary";
+import { ErrorBoundary, isModuleLoadError } from "./ErrorBoundary";
 
 function Boom(): never {
   throw new Error("boom de prueba");
@@ -38,6 +38,12 @@ const draw = async (node: React.ReactElement) => {
 };
 
 describe("ErrorBoundary", () => {
+  it("identifica errores de carga de módulos para ofrecer una recarga", () => {
+    expect(isModuleLoadError(new TypeError("Failed to fetch dynamically imported module: http://localhost:5173/module.tsx"))).toBe(true);
+    expect(isModuleLoadError(new Error("Loading chunk 42 failed"))).toBe(true);
+    expect(isModuleLoadError(new TypeError("Cannot read properties of null"))).toBe(false);
+  });
+
   it("muestra qué nota falló y por qué, en vez de dejar la ventana vacía", async () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const host = mount();

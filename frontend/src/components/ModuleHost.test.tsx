@@ -5,7 +5,7 @@
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { act, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ModuleHost } from "./ModuleHost";
@@ -48,6 +48,20 @@ const subOf = (container: HTMLElement, id: string) =>
   container.querySelector(`[data-module="${id}"] [data-sub]`)?.textContent;
 
 describe("ModuleHost", () => {
+  it("contiene un fallo de render y permite reintentar sin desmontar el resto de la app", () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    let broken = true;
+    function Broken() { if (broken) throw new Error("fallo de prueba"); return <div>Recuperado</div>; }
+    const { container, root } = mount(<ModuleHost module="mentor" render={() => <Broken />} />);
+    expect(container.textContent).toContain("El Mentor no se pudo pintar");
+    broken = false;
+    act(() => { [...container.querySelectorAll("button")].find((b) => b.textContent === "Reintentar")!.click(); });
+    expect(container.textContent).toContain("Recuperado");
+    act(() => root.unmount());
+    container.remove();
+    log.mockRestore();
+  });
+
   it("keeps the previous functionality mounted and hidden", () => {
     const { container, root } = mount(<Harness module="ejercicio" />);
     expect(subOf(container, "ejercicio")).toBe("inicio");

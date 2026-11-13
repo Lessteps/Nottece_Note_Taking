@@ -7,7 +7,7 @@
 // Los botones se pueden reordenar arrastrándolos con el ratón; el orden se recuerda
 // (ver lib/launcherOrder).
 
-import { Bug, CalendarClock, Crop, Globe, GraduationCap, Headphones, ListTree, Mic, Map as MapIcon, PenTool, ScrollText, Sparkles } from "lucide-react";
+import { Bug, CalendarClock, ClipboardList, Crop, Globe, GraduationCap, Headphones, ListTree, Mic, Map as MapIcon, PenTool, ScrollText, Sparkles } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { toggleFace } from "../../lib/panelFaces";
 import { startScreenCapture } from "../../lib/screenCapture";
@@ -18,12 +18,13 @@ import { useSourcesPanel } from "../english/SourcesPanel";
 import { useRecordingsPanel } from "../english/RecordingsPanel";
 import { useCodePanel } from "../../store/codePanel";
 import { useSkillsPanel } from "../../store/skillsPanel";
+import { useRegenTasksPanel } from "../../store/regenTasksPanel";
 import { useApp } from "../../store/app";
 import { useAssistant } from "../../store/assistant";
 import { useWebPages } from "../../store/webPages";
 import { cn } from "../ui";
 
-export function PanelLaunchers({ module }: { module: string }) {
+export function PanelLaunchers({ module, planning = false }: { module: string; planning?: boolean }) {
   const active = useApp((s) => s.active);
   const inspectorOpen = useApp((s) => s.inspectorOpen);
   const muscleOpen = useApp((s) => s.muscleOpen);
@@ -36,6 +37,7 @@ export function PanelLaunchers({ module }: { module: string }) {
   const recordingsOpen = useRecordingsPanel((s) => s.open);
   const codeOpen = useCodePanel((s) => s.open);
   const skillsOpen = useSkillsPanel((s) => s.open);
+  const tasksOpen = useRegenTasksPanel((s) => s.open);
   const [saved, setSaved] = useState<string[]>(loadLauncherOrder);
   const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
@@ -66,6 +68,9 @@ export function PanelLaunchers({ module }: { module: string }) {
   // Every button of the strip, in its default order. `show` says whether it belongs
   // to this area; the user's drag-and-drop order is applied on top of it.
   const items: Array<{ id: string; show: boolean; node: ReactNode }> = [
+    { id: "regen-tasks", show: module === "mentor" && planning, node: (
+      <button type="button" title="Historial de tareas de regeneración" aria-label="Tareas de regeneración" aria-pressed={tasksOpen} onClick={() => toggleFace("regenTasks")} className={cell(tasksOpen)} data-testid="launcher-regen-tasks"><ClipboardList size={16} /></button>
+    ) },
     {
       // The muscle map is Ejercicio's: outside it, it draws nothing.
       id: "muscle", show: module === "ejercicio",

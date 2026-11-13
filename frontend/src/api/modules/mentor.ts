@@ -1620,6 +1620,14 @@ export function mentorApi(app: AppState, send?: SendFn) {
       if (refreshed.changed) plan = st.save(refreshed.plan);
       const practice = practiceStatusOf(app, plan, today, log());
       const derived = deriveView(plan, lookup, today);
+      const plannedFolders = plan.subplans.flatMap((s) => s.topics.map((t) => t.folder));
+      const freshness = outdatedByFolder(app.root, plannedFolders);
+      const practiceOutdated = Object.fromEntries(plannedFolders.flatMap((folder) => {
+        const stale = freshness.get(folder);
+        const snap = lookup(folder);
+        const hasTheory = !!snap && snap.theoryNotes > 0;
+        return stale?.exercises || stale?.practica || (hasTheory && snap.exerciseCount === 0) ? [[folder, true]] : [];
+      }));
 
       const m = app.mgrs();
       const dayStart = midnight();
@@ -1654,6 +1662,7 @@ export function mentorApi(app: AppState, send?: SendFn) {
         practiceItems,
         practice,
         dailyProjectDone: dailyProjectDoneOf(app.root, plan),
+        practiceOutdated,
         months,
         plans: rows,
         aiConfigured,
@@ -3037,8 +3046,11 @@ export function mentorApi(app: AppState, send?: SendFn) {
         designs,
       );
       // piezas hechas con una versión anterior de su skill (sin IA: huella de la skill contra la fecha de cada archivo)
-      const outdated = outdatedByFolder(app.root, rows.filter((r) => r.exists).map((r) => r.folder));
-      return { loading: false as const, rows: rows.map((r) => (outdated.has(r.folder) ? { ...r, outdated: outdated.get(r.folder)! } : r)) };
+      const outdated = outdatedByFolder(app.root, [...new Set([...rows.filter((r) => r.exists).map((r) => r.folder), ...planTopics.map((t) => t.folder)])]);
+      return { loading: false as const, rows: rows.map((r) => {
+        const stale = outdated.get(r.folder);
+        return { ...r, ...(stale ? { outdated: stale } : {}), ...(r.exists && (!r.manifest || r.exercises === 0) ? { practiceMismatch: true } : {}) };
+      }) };
     },
 
     /**

@@ -10,15 +10,16 @@ import {
   FileCode,
   Loader2,
   Play,
-  RotateCcw,
   Terminal,
   Trash2,
+  Upload,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { api } from "../../lib/bridge";
 import { copyText } from "../../lib/clipboard";
 import type { CodeRun } from "../../lib/types";
 import { cn } from "../ui";
+import { highlightCode } from "../../lib/markdown";
 
 interface PracticeCodeEditorProps {
   value: string;
@@ -28,6 +29,7 @@ interface PracticeCodeEditorProps {
   starterCode?: string;
   placeholder?: string;
   mode?: string;
+  onImportFile?: () => Promise<void>;
 }
 
 const LINE_HEIGHT = 22;
@@ -42,6 +44,7 @@ export function PracticeCodeEditor({
   starterCode = "",
   placeholder = "Escribe tu código aquí...",
   mode = "code",
+  onImportFile,
 }: PracticeCodeEditorProps) {
   const [isRunning, setIsRunning] = useState(false);
   const [runOutcome, setRunOutcome] = useState<CodeRun | null>(null);
@@ -54,7 +57,43 @@ export function PracticeCodeEditor({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const gutterRef = useRef<HTMLDivElement>(null);
 
+  const keepCaretVisible = useCallback((el: HTMLTextAreaElement) => {
+    const line = el.value.slice(0, el.selectionStart).split("\n").length - 1;
+    const top = PAD_TOP + line * LINE_HEIGHT;
+    const bottom = top + LINE_HEIGHT;
+    const margin = LINE_HEIGHT * 2;
+    if (top < el.scrollTop + margin) el.scrollTop = Math.max(0, top - margin);
+    else if (bottom > el.scrollTop + el.clientHeight - margin) el.scrollTop = bottom - el.clientHeight + margin;
+    const column = el.value.slice(el.value.lastIndexOf("\n", el.selectionStart - 1) + 1, el.selectionStart).length;
+    const charWidth = 7.82;
+    const caretX = 12 + column * charWidth;
+    if (caretX < el.scrollLeft + 24) el.scrollLeft = Math.max(0, caretX - 24);
+    else if (caretX > el.scrollLeft + el.clientWidth - 24) el.scrollLeft = caretX - el.clientWidth + 24;
+    if (gutterRef.current) {
+      gutterRef.current.scrollTop = el.scrollTop;
+      gutterRef.current.scrollLeft = el.scrollLeft;
+    }
+    const overlay = el.parentElement?.querySelector("pre");
+    if (overlay) { overlay.scrollTop = el.scrollTop; overlay.scrollLeft = el.scrollLeft; }
+  }, []);
+
+  const handleChange = (el: HTMLTextAreaElement, nextValue: string) => {
+    onChange(nextValue);
+    requestAnimationFrame(() => keepCaretVisible(el));
+  };
+
   const lines = useMemo(() => Math.max(1, value.split("\n").length), [value]);
+  const indentGuides = useMemo(
+    () => value.split("\n").flatMap((line, lineIndex) => {
+      const prefix = line.match(/^[ \t]+/)?.[0] ?? "";
+      let columns = 0;
+      for (const char of prefix) {
+        columns = char === "\t" ? Math.ceil((columns + 1) / 4) * 4 : columns + 1;
+      }
+      return Array.from({ length: Math.floor(columns / 4) }, (_, level) => ({ lineIndex, level }));
+    }),
+    [value],
+  );
 
   const handleScroll = (e: React.UIEvent<HTMLTextAreaElement>) => {
     if (gutterRef.current) {
@@ -153,6 +192,7 @@ export function PracticeCodeEditor({
             onChange(nextVal);
             requestAnimationFrame(() => {
               el.selectionStart = el.selectionEnd = Math.max(lineStart, start - removeCount);
+              keepCaretVisible(el);
             });
           }
         } else {
@@ -161,6 +201,7 @@ export function PracticeCodeEditor({
           onChange(nextVal);
           requestAnimationFrame(() => {
             el.selectionStart = el.selectionEnd = start + 4;
+            keepCaretVisible(el);
           });
         }
       } else {
@@ -190,7 +231,7 @@ export function PracticeCodeEditor({
       const lineStart = value.lastIndexOf("\n", start - 1) + 1;
       const currentLine = value.slice(lineStart, start);
       const match = currentLine.match(/^(\s+)/);
-      let indent = match ? match[1] : "";
+      let indent = match?.[1] ?? "";
 
       // Add extra indent if line ends with ':' (Python) or '{' (JS/TS/C)
       const trimmedBefore = currentLine.trimEnd();
@@ -202,6 +243,7 @@ export function PracticeCodeEditor({
       onChange(nextVal);
       requestAnimationFrame(() => {
         el.selectionStart = el.selectionEnd = start + 1 + indent.length;
+        keepCaretVisible(el);
       });
       return;
     }
@@ -212,8 +254,8 @@ export function PracticeCodeEditor({
   return (
     <div className="flex flex-col overflow-hidden rounded-xl border border-line-strong bg-[#141416] text-[#e0e0e0] shadow-md transition-all focus-within:border-accent">
       {/* Editor Header / Action Bar */}
-      <div className="flex flex-wrap items-center justify-between border-b border-[#252528] bg-[#1a1a1e] px-3.5 py-2">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-[#252528] bg-[#1a1a1e] px-4 py-3">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1.5 rounded-md border border-[#303036] bg-[#222226] px-2 py-0.5 text-[11px] font-mono font-medium text-accent-text">
             <FileCode size={12} />
             <span>{language ? language.charAt(0).toUpperCase() + language.slice(1) : "Python"}</span>
@@ -242,7 +284,12 @@ export function PracticeCodeEditor({
           )}
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-2">
+          {onImportFile && (
+            <button type="button" disabled={disabled} onClick={() => void onImportFile()} title="Insertar el contenido de un archivo en la solución" className="flex items-center gap-1 rounded-md border border-[#303036] bg-[#222226] px-2 py-1 text-[11px] text-dim hover:text-text disabled:opacity-50">
+              <Upload size={11} /> Incluir archivo
+            </button>
+          )}
           <button
             type="button"
             onClick={handleCopyCode}
@@ -357,24 +404,40 @@ export function PracticeCodeEditor({
 
         {/* Text Area */}
         <div className="relative min-w-0 flex-1">
+          <pre aria-hidden="true" className="pointer-events-none absolute inset-0 m-0 overflow-hidden px-3 font-mono text-[13px] leading-[22px] text-[#e8e8ed]" style={{ paddingTop: PAD_TOP, paddingBottom: PAD_BOTTOM, whiteSpace: "pre", tabSize: 4 }}>
+            <div aria-hidden="true" className="pointer-events-none absolute inset-x-3 overflow-hidden" style={{ top: PAD_TOP, bottom: PAD_BOTTOM }}>
+              {indentGuides.map(({ lineIndex, level }) => (
+                <span
+                  key={`${lineIndex}-${level}`}
+                  className="absolute"
+                  style={{
+                    left: `${level * 4 + 2}ch`,
+                    top: lineIndex * LINE_HEIGHT,
+                    width: 1,
+                    height: LINE_HEIGHT,
+                    backgroundColor: "rgba(145, 145, 155, 0.34)",
+                  }}
+                />
+              ))}
+            </div>
+            <code className="nv-code-highlight" dangerouslySetInnerHTML={{ __html: highlightCode(value || placeholder, language) + (value.endsWith("\n") ? " " : "") }} />
+          </pre>
           <textarea
             ref={textareaRef}
             aria-label="Editor de código"
             value={value}
             readOnly={disabled}
-            onChange={(e) => onChange(e.target.value)}
-            onScroll={handleScroll}
+            onChange={(e) => handleChange(e.currentTarget, e.currentTarget.value)}
+            onScroll={(e) => {
+              handleScroll(e);
+              const pre = e.currentTarget.previousElementSibling as HTMLElement | null;
+              if (pre) { pre.scrollTop = e.currentTarget.scrollTop; pre.scrollLeft = e.currentTarget.scrollLeft; }
+            }}
             onKeyDown={handleKeyDown}
             placeholder={placeholder}
             spellCheck={false}
-            className="h-full w-full resize-y bg-transparent px-3 font-mono text-[13px] leading-[22px] text-[#e8e8ed] outline-none placeholder:text-[#55555c]"
-            style={{
-              paddingTop: PAD_TOP,
-              paddingBottom: PAD_BOTTOM,
-              whiteSpace: "pre",
-              tabSize: 4,
-              minHeight: "260px",
-            }}
+            className="relative h-full w-full resize-y bg-transparent px-3 font-mono text-[13px] leading-[22px] text-transparent caret-[#e8e8ed] outline-none placeholder:text-[#55555c] selection:bg-accent/30"
+            style={{ paddingTop: PAD_TOP, paddingBottom: PAD_BOTTOM, whiteSpace: "pre", tabSize: 4, minHeight: "260px" }}
           />
         </div>
       </div>

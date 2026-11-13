@@ -920,7 +920,7 @@ export interface PracticeExercise {
   pending: PracticePending | null;
 }
 
-export interface PracticeGraded { graded: true; result: PracticeResult; quality: number | null; history: PracticeAttempt[]; solution?: string }
+export interface PracticeGraded { graded: true; result: PracticeResult; quality: number | null; history: PracticeAttempt[]; solution?: string; submissionPath?: string; submissionError?: string }
 export interface PracticeWaiting {
   graded: false;
   waiting?: boolean;
@@ -963,7 +963,8 @@ export interface LadderLevel {
 export interface LadderData { fields: string[]; order?: number[]; hidden?: number[]; variant?: number }
 export interface LadderGraded { graded: true; result: PracticeResult; quality: number | null; rubric: string[]; passed: boolean; message: string; current: number; proof?: string }
 
-export interface StudyExerciseRef { path: string; note_id: string; title: string; discipline: string; skill: string; mode: string; difficulty: number }
+export interface StudyExerciseAttempt { at?: string; answer?: string; score?: number; verdict?: string; feedback?: string; hints_used?: number; solution_seen?: boolean; errors?: Array<{ category?: string; description?: string; evidence?: string; fix?: string }>; }
+export interface StudyExerciseRef { path: string; note_id: string; title: string; discipline: string; skill: string; mode: string; difficulty: number; mode_id?: string; skill_id?: string; completed?: boolean; history?: StudyExerciseAttempt[] }
 export interface StudySnapshot {
   area: { subject: string; title: string; subject_title: string; folder: string };
   exercises: number;
@@ -1684,6 +1685,7 @@ export type MentorPlanGet =
       items: MentorPlanItem[]; practiceItems?: PracticeItem[]; practice?: MentorPracticeStatus | null;
       /** por fecha, las áreas con su proyecto diario COMPLETO (la señal de avance de la cadena de entregables) */
       dailyProjectDone?: Record<string, string[]>;
+      practiceOutdated?: Record<string, boolean>;
       months: string[]; plans: MentorPlanRow[]; aiConfigured: boolean;
     };
 export type MentorPlanStatus = "activo" | "futuro" | "terminado" | "propuesto";
@@ -1894,6 +1896,7 @@ export interface RegenHandoffTopic {
   restored: boolean;
 }
 export interface RegenHandoff {
+  missingOnly?: boolean;
   id: string;
   what: "theory" | "practice" | "exercises" | "all" | "theory+practice" | "theory+exercises" | "practice+exercises";
   createdAt: string;

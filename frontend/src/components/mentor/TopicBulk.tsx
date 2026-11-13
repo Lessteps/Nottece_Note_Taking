@@ -2,7 +2,7 @@
 // qué se reemplaza y cuánto cuesta, y la cola que regenera los temas elegidos DE UNO EN UNO (un trabajo `study_topic_regenerate` cada vez; el
 // turno de generación es compartido). Un fallo no aborta la cola; se puede parar entre temas y al final hay un resumen por tema.
 
-import { BookOpen, ChevronDown, ClipboardList, Dumbbell, FolderInput, Loader2, Map as MapIcon, Plus, RefreshCw, Sparkles } from "lucide-react";
+import { BookOpen, ChevronDown, CircleHelp, ClipboardList, Dumbbell, FolderInput, Loader2, Map as MapIcon, Plus, RefreshCw, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../lib/bridge";
 import type { AreaTopicRow } from "../../lib/planAreaTopics";
@@ -54,9 +54,11 @@ export function useRegenQueue(onTopicDone?: () => void) {
     if (opts.alsoMap && what !== "map") {
       for (const r of rows) {
         try {
-          await runRegeneration(r.folder, "map", undefined, { quiet: true, engine: "app" });
-        } catch {
-          /* el mapa no bloquea el resto: se avisa al terminar */
+          const result = await runRegeneration(r.folder, "map", undefined, { quiet: true, engine: "app" });
+          if (result.error) throw new Error(result.error);
+        } catch (e) {
+          useApp.getState().toast("error", `No se pudo regenerar el mapa de «${r.title}»: ${(e as Error).message}. No se inició el resto del lote.`);
+          return;
         }
       }
     }
@@ -142,11 +144,11 @@ export function BulkToolbar({ count, busy, onAsk, onGenerateMissing, onHelper, g
 }) {
   const [menu, setMenu] = useState(false);
   const [moveMenu, setMoveMenu] = useState(false);
+  const [showRegenHelp, setShowRegenHelp] = useState(false);
   const [checked, setChecked] = useState<ReadonlySet<RegenPart>>(new Set());
   const kind = kindOfChecks(checked);
   const toggle = (p: RegenPart): void => setChecked((c) => { const n = new Set(c); if (!n.delete(p)) n.add(p); return n; });
   const off = count === 0 || busy;
-  const noKind = !kind;
   const why = busy ? "Hay una regeneración en curso." : count === 0 ? "Selecciona temas para regenerar" : "";
   const helpers: ReadonlyArray<{ key: SelectHelper; text: string }> = [
     { key: "all", text: "Seleccionar todos" },
@@ -161,6 +163,7 @@ export function BulkToolbar({ count, busy, onAsk, onGenerateMissing, onHelper, g
         {count === 0 ? <span className="font-normal text-dim">Selecciona temas para regenerar</span> : `${count} ${count === 1 ? "tema seleccionado" : "temas seleccionados"}`}
       </span>
       <span className="flex flex-wrap items-center gap-2">
+        <button type="button" aria-label="Explicar regenerar práctica y ejercicios" aria-expanded={showRegenHelp} onClick={() => setShowRegenHelp((v) => !v)} className="grid h-7 w-7 flex-none place-items-center rounded-md text-dim hover:bg-hover hover:text-text" data-testid="bulk-regen-help"><CircleHelp size={16} aria-hidden /></button>
         <span className="flex flex-wrap items-center gap-x-3 gap-y-1" role="group" aria-label="Qué regenerar" data-testid="bulk-checks">
           {CHECKS.map((c) => (
             <label key={c.part} className="inline-flex cursor-pointer items-center gap-1.5 text-[13.5px]" title={c.hint}>
@@ -177,12 +180,12 @@ export function BulkToolbar({ count, busy, onAsk, onGenerateMissing, onHelper, g
           ))}
         </span>
         <GhostButton
-          onClick={() => kind && onAsk(kind, mapAlone(checked))}
-          disabled={off || noKind}
-          title={why || (noKind ? "Marca qué regenerar: teoría, mapa, práctica o ejercicios" : "Respalda lo actual y lo reemplaza; lo marcado se hace junto")}
+          onClick={() => kind ? onAsk(kind, mapAlone(checked)) : onGenerateMissing()}
+          disabled={off}
+          title={why || (!kind ? "Genera lo que falta en los temas seleccionados" : "Respalda lo actual y lo reemplaza; lo marcado se hace junto")}
           data-testid="bulk-regen"
         >
-          <RefreshCw size={14} aria-hidden /> {kind ? LABEL[kind] : "Regenerar lo marcado"}
+          <RefreshCw size={14} aria-hidden /> {kind ? LABEL[kind] : "Generar lo que falta"}
         </GhostButton>
         <GhostButton onClick={onGenerateMissing} disabled={off} title={why || "Crea lo que falta de los temas elegidos (no toca lo que ya existe)"} data-testid="bulk-missing">
           <Sparkles size={14} aria-hidden /> Generar lo que falta
@@ -237,6 +240,7 @@ export function BulkToolbar({ count, busy, onAsk, onGenerateMissing, onHelper, g
           </span>
         )}
       </span>
+      {showRegenHelp && <p role="note" className="basis-full rounded-lg border border-line bg-panel px-3 py-2 text-[12.5px] leading-relaxed text-dim" data-testid="bulk-regen-explanation"><strong className="text-text">Práctica</strong> regenera el plan de competencias y la cantidad por dificultad. <strong className="text-text">Ejercicios</strong> crea los enunciados, pistas, soluciones y rúbricas según ese plan. Al regenerar, se reemplaza el contenido seleccionado y se conserva una copia de respaldo; «Generar lo que falta» solo crea piezas ausentes.</p>}
       <span className="relative ml-auto">
         <GhostButton onClick={() => setMenu((m) => !m)} aria-expanded={menu} data-testid="bulk-select-menu" title="Elegir temas de un golpe">
           Selección <ChevronDown size={14} aria-hidden />

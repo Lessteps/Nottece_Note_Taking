@@ -6,7 +6,7 @@
 // ── Fechas (AAAA-MM-DD, siempre en calendario local sin zona: se opera en UTC para no sufrir el DST) ──
 
 export const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-export const MAX_PERIOD_DAYS = 400;
+export const MAX_PERIOD_DAYS = 1096;
 const DAY_MS = 86400000;
 const two = (n: number): string => String(n).padStart(2, "0");
 

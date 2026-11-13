@@ -5,6 +5,7 @@
 
 import * as crypto from "node:crypto";
 import * as path from "node:path";
+import * as fs from "node:fs";
 import { nowLocalIso } from "../dates";
 import { loadJson, writeJson } from "../store";
 import { formatLayout, LAYOUT } from "../vaultFormat";
@@ -62,6 +63,20 @@ export class PracticeAttemptStore {
     data.draft = text;
     data.note_path = notePath;
     writeJson(this._path(noteId), data);
+  }
+  saveExerciseSnapshot(noteId: string, notePath: string, snapshot: Record<string, unknown>): void {
+    const folder = path.join(this.vaultRoot, ".notevault", "estudio", "ejercicios", attemptKey(noteId));
+    fs.mkdirSync(folder, { recursive: true });
+    const file = path.join(folder, "ejercicio.json");
+    let current: Record<string, unknown> = {};
+    try { current = JSON.parse(fs.readFileSync(file, "utf8")); } catch { /* first save */ }
+    const next = { ...current, note_id: noteId, note_path: notePath, updated_at: nowLocalIso(), ...snapshot };
+    fs.writeFileSync(file, JSON.stringify(next, null, 2) + "\n", "utf8");
+    if (typeof snapshot.answer === "string") {
+      const lang = String(snapshot.language ?? "").toLowerCase();
+      const extension = !lang ? "txt" : /java/.test(lang) ? "java" : /typescript|\bts\b/.test(lang) ? "ts" : /javascript|\bjs\b|node/.test(lang) ? "js" : /python|\bpy\b/.test(lang) ? "py" : /sql|postgres|mysql/.test(lang) ? "sql" : /rust/.test(lang) ? "rs" : /go/.test(lang) ? "go" : "txt";
+      fs.writeFileSync(path.join(folder, `solucion.${extension}`), snapshot.answer, "utf8");
+    }
   }
   save_draft(noteId: string, notePath: string, text: string): void {
     this.saveDraft(noteId, notePath, text);
@@ -121,6 +136,7 @@ export class PracticeAttemptStore {
     data.draft = "";
     data.attempts.push(attempt);
     writeJson(this._path(ex.note_id), data);
+    this.saveExerciseSnapshot(ex.note_id, notePath, { difficulty: ex.difficulty, last_attempt: attempt, attempts: data.attempts, answer: options.answer, language: ex.subject, title: ex.title, explanation: ex.statement });
     return attempt;
   }
 }

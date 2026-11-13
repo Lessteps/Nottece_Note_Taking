@@ -108,7 +108,7 @@ describe("PlanAreaTopics", () => {
     // pulsar el tema ofrece sus opciones: apunte, archivo de práctica, canvas y Pomodoro
     await click("area-open");
     expect([...document.querySelectorAll("[data-testid=board-menu] [role=menuitem]")].map((b) => b.textContent!.trim())).toEqual(["Abrir apunte (.md)", "Abrir archivo de práctica", "Abrir canvas explicativo", "Asignar al Pomodoro", "Ir a la planeación"]);
-    await click("board-open-practice");
+    await act(async () => { document.querySelector<HTMLElement>("[data-testid=board-open-practice]")!.click(); });
     expect(openTopic).toHaveBeenCalledWith("P/4/4.2 REST");
   });
 

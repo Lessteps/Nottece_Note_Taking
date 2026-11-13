@@ -31,8 +31,7 @@
  *   KB_CANVAS_FOLDER="C:/PROGRAMMING/Matemáticas/<area>/<concept folder>" \
  *     npx vitest run src/core/canvas/kbCanvas.test.ts
  *
- * The generator never overwrites a canvas the user edited: when the file on disk
- * differs from the hash in the manifest it writes `… .nuevo.canvas` instead.
+ * The generator keeps one visible canvas and backs up the previous version before replacing it.
  */
 
 import * as crypto from "node:crypto";
@@ -40,6 +39,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import * as cf from "../src/core/canvas/canvasFormat";
+import { archiveCanvasAlternates, backupCanvasVersion } from "../src/core/canvas/canvasVersions";
 import { requiredTextHeight } from "../src/core/canvas/boxSizing";
 import { parseFrontmatter } from "../src/core/frontmatter";
 import { edgePath, type Side } from "../src/lib/canvas";
@@ -740,27 +740,16 @@ function writeManifest(vaultRoot: string, m: Manifest): void {
 const sha256 = (file: string): string =>
   crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
 
-/**
- * Writes `doc` to `target` unless the user edited it since the generator last
- * wrote it — in that case the new version goes to `<stem>.nuevo.canvas` and the
- * edited file is left untouched.
- */
+/** Guarda la versión anterior en la papelera y mantiene un solo mapa visible. */
 export function writeGenerated(target: string, doc: cf.CanvasDoc, vaultRoot: string): string {
   const rel = path.relative(vaultRoot, target).split(path.sep).join("/");
   const tmp = `${target}.tmp`;
   cf.dump(tmp, doc);
   const hash = sha256(tmp);
   const manifest = readManifest(vaultRoot);
-  const known = manifest[rel];
-  const untouched = !fs.existsSync(target) || (known !== undefined && sha256(target) === known);
-  if (!untouched) {
-    const alt = target.replace(/\.canvas$/, ".nuevo.canvas");
-    fs.copyFileSync(tmp, alt);
-    fs.rmSync(tmp, { force: true });
-    return `kept (user-edited) → wrote ${alt}`;
-  }
-  fs.copyFileSync(tmp, target);
-  fs.rmSync(tmp, { force: true });
+  if (fs.existsSync(target) && sha256(target) !== hash) backupCanvasVersion(vaultRoot, target);
+  archiveCanvasAlternates(vaultRoot, path.dirname(target));
+  fs.renameSync(tmp, target);
   manifest[rel] = hash;
   writeManifest(vaultRoot, manifest);
   recordCanvasSkillVersion(vaultRoot, rel);

@@ -3,7 +3,7 @@ import {
   AlertTriangle, ArrowLeft, ArrowRight, ArrowUp, BookOpen, Bookmark, ChevronDown, ChevronRight, Columns2, ExternalLink, FileText, Folder, FolderOpen,
   Link2, PenLine, X,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../lib/bridge";
 import type { Mentions, SearchHit } from "../../lib/types";
 import { useVirtualList } from "../../lib/useVirtualList";
@@ -14,17 +14,19 @@ import { newCanvasIn, newFolderIn, newNoteIn } from "./FileTree";
 import { treeRootMenuItems } from "./fileMenu";
 import { ReadView } from "./ReadView";
 import { RouteBanner } from "../study/RouteUi";
-import { PracticeView } from "../practice/PracticeView";
-import { ExerciseFolderView } from "../practice/ExerciseFolderView";
-import { PracticeProjectsView } from "../practice/PracticeProjectDialog";
-import { InkPad } from "../practice/InkPad";
-import { ResumenView } from "../study/ResumenView";
-import { TeoricaView } from "../study/TeoricaView";
-import { TopicFileView } from "../study/TopicFileView";
 import { viewFileKind } from "../../lib/viewFiles";
-import { isProofNote, LadderView, useLadder } from "../practice/LadderView";
-import { SourceEditor } from "./SourceEditor";
+import { isProofNote, useLadder } from "../../store/ladder";
 import { FormatBar } from "./FormatBar";
+
+const SourceEditor = lazy(() => import("./SourceEditor").then((m) => ({ default: m.SourceEditor })));
+const PracticeView = lazy(() => import("../practice/PracticeView").then((m) => ({ default: m.PracticeView })));
+const ExerciseFolderView = lazy(() => import("../practice/ExerciseFolderView").then((m) => ({ default: m.ExerciseFolderView })));
+const PracticeProjectsView = lazy(() => import("../practice/PracticeProjectDialog").then((m) => ({ default: m.PracticeProjectsView })));
+const InkPad = lazy(() => import("../practice/InkPad").then((m) => ({ default: m.InkPad })));
+const ResumenView = lazy(() => import("../study/ResumenView").then((m) => ({ default: m.ResumenView })));
+const TeoricaView = lazy(() => import("../study/TeoricaView").then((m) => ({ default: m.TeoricaView })));
+const TopicFileView = lazy(() => import("../study/TopicFileView").then((m) => ({ default: m.TopicFileView })));
+const LadderView = lazy(() => import("../practice/LadderView").then((m) => ({ default: m.LadderView })));
 
 
 const MODES: Array<{ id: ViewMode; label: string; icon: React.ReactNode }> = [
@@ -139,7 +141,8 @@ function NoteHeader({ note }: { note: OpenNote }) {
               <button
                 type="button"
                 title={i === parts.length - 1 ? "Ver la carpeta de este archivo" : `Explorar ${p}`}
-                onClick={(e) => browseFolder(parts.slice(0, Math.min(i + 1, parts.length - 1)).join("/"), e)}
+                onClick={() => useApp.getState().showFolder(parts.slice(0, Math.min(i + 1, parts.length - 1)).join("/"))}
+                onContextMenu={(e) => { e.preventDefault(); browseFolder(parts.slice(0, Math.min(i + 1, parts.length - 1)).join("/"), e); }}
                 className={cn("truncate rounded px-0.5 hover:bg-hover hover:text-text", i === parts.length - 1 ? "font-semibold text-text" : "text-dim")}
               >
                 {p}
@@ -237,14 +240,14 @@ function ConflictBanner({ note }: { note: OpenNote }) {
   );
 }
 
-function BacklinksBar({ note }: { note: OpenNote }) {
+export function BacklinksBar({ note }: { note: OpenNote }) {
   const [open, setOpen] = useState(false);
   const [data, setData] = useState<Mentions | null>(null);
   const openNote = useApp((s) => s.openNote);
 
   useEffect(() => {
     setData(null);
-    if (note.kind !== "note") return;
+    if (note.kind !== "note" || !open) return;
     let alive = true;
     const t = setTimeout(() => {
       api.mentions(note.path)
@@ -255,7 +258,7 @@ function BacklinksBar({ note }: { note: OpenNote }) {
       alive = false;
       clearTimeout(t);
     };
-  }, [note.path, note.kind]);
+  }, [note.path, note.kind, open]);
 
   if (note.kind !== "note") return null;
   const count = data?.linked.length;
@@ -270,7 +273,7 @@ function BacklinksBar({ note }: { note: OpenNote }) {
         <Link2 size={14} className="text-dim" />
         <span className="text-[12.5px] font-semibold text-text">Backlinks &amp; Menciones</span>
         <span className="rounded-md border border-accent/30 bg-accent-soft px-2 font-mono text-[10.5px] text-accent-text">
-          {count === undefined ? "…" : `${count} referenciados`}
+          {count === undefined ? (open ? "Buscando…" : "Abrir para consultar") : `${count} referenciados`}
         </span>
         {data && data.unlinked.length > 0 && (
           <span className="font-mono text-[10.5px] text-faint">· {data.unlinked.length} sin enlazar</span>
@@ -351,16 +354,18 @@ function Editor({ note }: { note: OpenNote }) {
   const onChange = useCallback((raw: string) => editRaw(note.path, raw), [editRaw, note.path]);
   const onRevealed = useCallback(() => clearReveal(note.path), [clearReveal, note.path]);
   return (
-    <SourceEditor
-      key={note.path}
-      value={note.raw}
-      eol={note.eol}
-      code={note.kind === "code"}
-      onChange={onChange}
-      onCursor={(line, col) => setCursor({ line, col })}
-      revealLine={note.revealLine}
-      onRevealed={onRevealed}
-    />
+    <Suspense fallback={<div className="grid h-full place-items-center bg-surface text-[12px] text-faint">Cargando editor…</div>}>
+      <SourceEditor
+        key={note.path}
+        value={note.raw}
+        eol={note.eol}
+        code={note.kind === "code"}
+        onChange={onChange}
+        onCursor={(line, col) => setCursor({ line, col })}
+        revealLine={note.revealLine}
+        onRevealed={onRevealed}
+      />
+    </Suspense>
   );
 }
 
@@ -446,14 +451,15 @@ export function EditorArea() {
                 )}
                 {mode !== "edit" && (
                   <div className={cn("min-h-0 min-w-0", mode === "split" ? "w-1/2" : "flex-1")}>
-                    {mode === "read" && isViewFile(note, "practica") ? <TopicFileView note={note} />
-                      : mode === "read" && isViewFile(note, "teorica") ? <TeoricaView note={note} />
+                    <Suspense fallback={<div className="grid h-full place-items-center bg-surface text-[12px] text-faint">Cargando vista…</div>}>
+                      {mode === "read" && isViewFile(note, "practica") ? <TopicFileView note={note} />
+                        : mode === "read" && isViewFile(note, "teorica") ? <TeoricaView note={note} />
                         : mode === "read" && isViewFile(note, "resumen") ? <ResumenView note={note} />
                         : mode === "read" && isViewFile(note, "ejercicios") ? <ExerciseFolderView note={note} />
                         : mode === "read" && isViewFile(note, "proyectos") ? <PracticeProjectsView />
                         : mode === "read" && isViewFile(note, "dibujo") ? <InkPad note={note} />
                         : mode === "read" && isExercise(note) ? <PracticeView note={note} />
-                      : mode === "read" && ladderOn ? <LadderView path={note.path} onExit={() => useLadder.getState().set(note.path, false)} />
+                        : mode === "read" && ladderOn ? <LadderView path={note.path} onExit={() => useLadder.getState().set(note.path, false)} />
                         : (
                           <div className="flex h-full flex-col">
                             {mode === "read" && note.kind === "note" && isProofNote(note.frontmatter) && (
@@ -468,6 +474,7 @@ export function EditorArea() {
                             <div className="min-h-0 flex-1"><ReadView note={note} /></div>
                           </div>
                         )}
+                    </Suspense>
                   </div>
                 )}
               </div>

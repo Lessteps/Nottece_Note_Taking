@@ -286,7 +286,7 @@ export function scanVault(vaultRoot: string, paths: Iterable<string>): VaultScan
     })();
     scan.notes.push({ path: absPath, rel, frontmatter: fm });
     if (isPracticeFrontmatter(fm)) {
-      scan.exercises.push(exerciseRef(absPath, resolvedRoot, fm));
+      if (!isTrue(fm.archived)) scan.exercises.push(exerciseRef(absPath, resolvedRoot, fm));
     } else if (text) {
       const stem = path.basename(absPath, path.extname(absPath));
       scan.card_notes.push({

@@ -19,16 +19,18 @@ export function TopBarPomodoro() {
   const [open, setOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
-  // Actualizar timer en vivo
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 500);
-    return () => clearInterval(t);
-  }, []);
-
-  const left = remainingMs(p, now);
   const isRunning = p.phase !== "idle" && p.running;
   const isPaused = p.phase !== "idle" && !p.running;
   const showDropdown = open || pinned;
+
+  // Actualizar timer en vivo solo mientras el temporizador esté activo y corriendo
+  useEffect(() => {
+    if (!isRunning) return;
+    const t = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(t);
+  }, [isRunning]);
+
+  const left = remainingMs(p, now);
 
   const handleStop = async () => {
     const wasBreak = usePomodoro.getState().p.phase === "break";

@@ -814,7 +814,7 @@ studyTopicMap: (rel: string) => call<{ ok: boolean; path: string }>("study_topic
   /** Motores con los que se puede regenerar ahora mismo (la IA de la app, Claude o un agente externo), según los ajustes de IA. */
   studyRegenEngines: () => call<import("./types").RegenEnginesView>("study_regen_engines"),
   /** Tarea para un agente externo (Antigravity / Claude Code): respalda y escribe el archivo de la tarea en la vault. `folders`: un tema o un lote. */
-  studyTopicRegenerateHandoff: (folders: string | string[], what: "theory" | "practice" | "exercises" | "all" | "theory+practice" | "theory+exercises" | "practice+exercises", confirm: boolean) => call<import("./types").RegenHandoff>("study_topic_regenerate_handoff", folders, what, confirm),
+  studyTopicRegenerateHandoff: (folders: string | string[], what: "theory" | "practice" | "exercises" | "all" | "theory+practice" | "theory+exercises" | "practice+exercises", confirm: boolean, options?: { missingOnly?: boolean; includeRecommended?: boolean; work?: Array<{ folder: string; steps: Array<"theory" | "map" | "practice" | "exercises"> }> }) => call<import("./types").RegenHandoff>("study_topic_regenerate_handoff", folders, what, confirm, options),
   studyTopicRegenerateHandoffStatus: (id: string) => call<import("./types").RegenHandoff>("study_topic_regenerate_handoff_status", id),
   /** Las tareas para agentes externos guardadas en la vault (reabrirlas tras reiniciar la app). */
   studyTopicRegenerateHandoffList: () => call<import("./types").RegenHandoff[]>("study_topic_regenerate_handoff_list"),
@@ -889,6 +889,7 @@ studyTopicMap: (rel: string) => call<{ ok: boolean; path: string }>("study_topic
   enRecordingSave: (name: string, data: string, ext = "webm") => call<{ ok: boolean; id: string; size: number }>("en_recording_save", name, data, ext),
   codeRuntimes: () => call<{ items: import("./types").CodeRuntime[] }>("code_runtimes"),
   codeRun: (language: string, code: string, stdin = "") => call<import("./types").CodeRun>("code_run", language, code, stdin),
+  practicePickCodeFile: () => call<{ok:boolean;name?:string;text?:string}>("practice_pick_code_file"),
   codeTrace: (language: string, code: string, stdin = "") => call<import("./types").CodeTrace>("code_trace", language, code, stdin),
   // programming_practice: the weekly project pipeline (build → construct → defend → postmortem)
   ppStatus: () => call<import("./types").PpStatus>("pp_status"),

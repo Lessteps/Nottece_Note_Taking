@@ -186,6 +186,7 @@ describe("agente externo — un tema", () => {
 
   it("validar con éxito marca el tema y quita el botón; si falla enseña los motivos y permite restaurar CON confirmación", async () => {
     vi.spyOn(api, "studyRegenEngines").mockResolvedValue(BRIDGE);
+    const copied = vi.spyOn(clipboard, "copyText").mockResolvedValue(true);
     vi.spyOn(api, "studyTopicRegenerateHandoff").mockResolvedValue(handoff());
     const bad = handoff({ status: "failed", topics: [{ ...handoff().topics[0]!, state: "error", problems: ["Estructura: falta la sección Explicación"] }] });
     const restored = handoff({ status: "restored", topics: [{ ...handoff().topics[0]!, state: "restored", restored: true }] });
@@ -197,6 +198,8 @@ describe("agente externo — un tema", () => {
     expect(validate).toHaveBeenLastCalledWith("h1", false);
     expect(byTest("handoff-regen-topics")!.textContent).toContain("no pasó la validación");
     expect(byTest("handoff-regen-topics")!.textContent).toContain("falta la sección Explicación");
+    await click("handoff-regen-copy-errors");
+    expect(copied).toHaveBeenCalledWith(expect.stringContaining("Estructura: falta la sección Explicación"));
     expect(byTest("handoff-regen-validate")).toBeTruthy(); // se puede corregir y validar otra vez
     // restaurar pide confirmación
     await click("handoff-regen-restore");

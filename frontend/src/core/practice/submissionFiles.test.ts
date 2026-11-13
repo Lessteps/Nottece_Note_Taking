@@ -1,0 +1,22 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, expect, it } from "vitest";
+import { ExerciseNote } from "./exerciseNote.js";
+import { writePracticeSubmission } from "./submissionFiles.js";
+const root = fs.mkdtempSync(path.join(os.tmpdir(), "nv-submission-"));
+afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
+it("guarda código Python y documentación por intento, sin sobreescribir", () => {
+  const note = "Programación/Tema/Ejercicios/implement/ejemplo.md";
+  fs.mkdirSync(path.dirname(path.join(root, note)), { recursive: true });
+  fs.writeFileSync(path.join(root, note), "# Nota");
+  const ex = new ExerciseNote({ note_id: "ejemplo", title: "Cuenta", statement: "Cuenta pedidos.", subject: "programming", discipline: "python", mode: "implement" });
+  const attempt = { at: "2026-11-13", answer: "```python\nprint(24)\n```", score: 100, verdict: "correct", feedback: "Bien" };
+  const rel = writePracticeSubmission(root, ex, note, attempt, 1)!;
+  expect(fs.readFileSync(path.join(root, rel, "solucion.py"), "utf8")).toBe("print(24)\n");
+  expect(fs.readFileSync(path.join(root, rel, "README.md"), "utf8")).toContain("Cuenta pedidos.");
+  expect(writePracticeSubmission(root, ex, note, attempt, 1)).toBe(rel);
+  const next = writePracticeSubmission(root, ex, note, { ...attempt, answer: "print(25)" }, 2)!;
+  expect(next).not.toBe(rel);
+  expect(fs.readFileSync(path.join(root, rel, "solucion.py"), "utf8")).toBe("print(24)\n");
+});

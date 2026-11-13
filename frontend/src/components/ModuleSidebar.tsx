@@ -1,6 +1,6 @@
 // The left column every module uses: a title and a list of views.
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "./ui";
 import { useApp } from "../store/app";
@@ -14,6 +14,8 @@ export interface SidebarItem {
   badgeTone?: "accent" | "danger";
   /** sub-vistas anidadas bajo este ítem (p. ej. una por plan del Mentor): crecen o decrecen con los datos */
   subItems?: SidebarItem[];
+  /** Las sub-vistas aparecen al desplegar este ítem. */
+  expandable?: boolean;
   /** rótulo de sección que se pinta justo encima de este ítem (p. ej. «PLANIFICACIÓN», «MÁS») */
   sectionLabel?: string;
 }
@@ -35,6 +37,7 @@ export function ModuleSidebar({
   // El botón «Panel lateral» de la barra de título (Ctrl+\) pliega la columna de CUALQUIER módulo, no solo el explorador de Notas:
   // así, en una ventana estrecha, el contenido recupera el ancho.
   const open = useApp((s) => s.explorerOpen);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const isCollapsed = collapsible === true && collapsed === true;
   if (!open) return null;
   return (
@@ -65,8 +68,8 @@ export function ModuleSidebar({
         {items.map((it) => (
           <div key={it.id} className="flex flex-col gap-0.5">
             {!isCollapsed && it.sectionLabel && <p className="mt-2 px-2.5 pb-0.5 font-mono text-[10.5px] font-semibold uppercase tracking-wider text-faint first:mt-0" data-testid={`nav-section-${it.id}`}>{it.sectionLabel}</p>}
-            <SidebarButton it={it} active={active === it.id} onSelect={onSelect} collapsed={isCollapsed} />
-            {!isCollapsed && it.subItems && it.subItems.length > 0 && (
+            <SidebarButton it={it} active={active === it.id} onSelect={(id) => { onSelect(id); if (it.expandable) setExpanded((s) => ({ ...s, [id]: !(s[id] ?? !!it.subItems?.some((sub) => sub.id === active)) })); }} collapsed={isCollapsed} expanded={it.expandable ? (expanded[it.id] ?? !!it.subItems?.some((sub) => sub.id === active)) : undefined} />
+            {!isCollapsed && it.subItems && it.subItems.length > 0 && (!it.expandable || (expanded[it.id] ?? !!it.subItems?.some((sub) => sub.id === active))) && (
               <div className="ml-4 flex flex-col gap-0.5 border-l border-line pl-1.5" role="group" aria-label={`${it.label}: sub-vistas`}>
                 {it.subItems.map((sub) => (
                   <SidebarButton key={sub.id} it={sub} active={active === sub.id} onSelect={onSelect} sub />
@@ -82,13 +85,14 @@ export function ModuleSidebar({
   );
 }
 
-function SidebarButton({ it, active, onSelect, sub, collapsed }: { it: SidebarItem; active: boolean; onSelect: (id: string) => void; sub?: boolean; collapsed?: boolean }) {
+function SidebarButton({ it, active, onSelect, sub, collapsed, expanded }: { it: SidebarItem; active: boolean; onSelect: (id: string) => void; sub?: boolean; collapsed?: boolean; expanded?: boolean }) {
   return (
     <button
       type="button"
       onClick={() => onSelect(it.id)}
       data-testid={`nav-${it.id}`}
       aria-current={active ? "page" : undefined}
+      aria-expanded={expanded}
       title={collapsed ? it.label : sub ? it.hint : undefined}
       aria-label={collapsed ? it.label : undefined}
       className={cn(
@@ -105,6 +109,7 @@ function SidebarButton({ it, active, onSelect, sub, collapsed }: { it: SidebarIt
           {it.hint && <span className="block truncate text-[11px] text-faint">{it.hint}</span>}
         </span>
       )}
+      {!collapsed && expanded !== undefined && (expanded ? <ChevronLeft size={14} className="-rotate-90" aria-hidden /> : <ChevronRight size={14} aria-hidden />)}
       {!collapsed && it.badge !== undefined && it.badge !== "" && it.badge !== 0 && (
         <span className={cn("rounded-md px-1.5 font-mono text-[10.5px]", it.badgeTone === "danger" ? "bg-danger-soft text-danger" : "bg-accent-soft text-accent-text")}>{it.badge}</span>
       )}

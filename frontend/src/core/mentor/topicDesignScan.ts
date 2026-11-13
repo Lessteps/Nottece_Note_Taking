@@ -124,6 +124,7 @@ export function diskExercises(root: string, folder: string, maxFiles = 600): Arr
         const [fm] = parseFrontmatter(text.slice(0, 4000));
         if (!fm || String((fm as Record<string, any>).type ?? "").toLowerCase() !== "exercise") continue;
         const f = fm as Record<string, any>;
+        if (f.archived === true || String(f.archived).toLowerCase() === "true") continue;
         out.push({ path: full, rel: path.relative(root, full).split(path.sep).join("/"), skill: String(f.skill ?? ""), mode: String(f.mode ?? f.skill ?? ""), difficulty: Math.max(1, Math.min(3, Number(f.difficulty) || 1)) });
       }
     }

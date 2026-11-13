@@ -8,19 +8,28 @@ import * as path from "node:path";
 import { fsPath } from "./attachments";
 import { toPosix } from "./paths";
 
-export const WALK_INTERVAL_MS = 30000; // 30 seconds
+export const WALK_INTERVAL_MS = 300_000; // 5 minutos (reactivo ante cambios; evita polling I/O cada 30 s)
 
 export class IndexedNote {
   path: string;
   title: string;
   text: string;
-  lower: string;
+  private _lower: string | null = null;
 
   constructor(filePath: string, title: string, text: string, lower?: string) {
     this.path = toPosix(path.resolve(filePath));
     this.title = title;
     this.text = text;
-    this.lower = lower ?? text.toLowerCase();
+    if (lower !== undefined) {
+      this._lower = lower;
+    }
+  }
+
+  get lower(): string {
+    if (this._lower === null) {
+      this._lower = this.text.toLowerCase();
+    }
+    return this._lower;
   }
 }
 
@@ -86,7 +95,7 @@ export class VaultIndex {
       try {
         const text = fs.readFileSync(resolved, "utf-8");
         const title = path.parse(p).name;
-        nextEntries.set(normPath, [stamp, new IndexedNote(normPath, title, text, text.toLowerCase())]);
+        nextEntries.set(normPath, [stamp, new IndexedNote(normPath, title, text)]);
       } catch {
         continue;
       }
@@ -108,7 +117,7 @@ export class VaultIndex {
       const stat = fs.statSync(fsPath(filePath));
       const stamp: [number, number] = [stat.mtimeMs, stat.size];
       const title = path.parse(filePath).name;
-      this.entries.set(norm, [stamp, new IndexedNote(norm, title, text, text.toLowerCase())]);
+      this.entries.set(norm, [stamp, new IndexedNote(norm, title, text)]);
     } catch {
       // Ignore stat error
     }
@@ -118,6 +127,11 @@ export class VaultIndex {
     const norm = toPosix(path.resolve(filePath));
     this.entries.delete(norm);
     this.walked = 0;
+  }
+
+  invalidate(): void {
+    this.walked = 0;
+    this.isReady = false;
   }
 
   clear(): void {

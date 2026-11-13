@@ -12,6 +12,14 @@ const f = (n: string) => `Programación/4 Backend/${n}`;
 const design = (folder: string, o: Partial<TopicDesignInput>): TopicDesign =>
   evaluateTopicDesign({ folder, title: folder.split("/").pop()!, subject: "programming", exists: true, files: [], exercises: [], ...o });
 const man = { topicType: "mixed", skills: ["implement", "pg_true_false"] };
+it("enumera todas las dificultades previstas incluso cuando no hay ejercicios todavía", () => {
+  const d = design(f("4.7 Nuevo"), { manifest: { topicType: "mixed", skills: ["implement", "pg_true_false"], plan: { implement: [4, 4, 0], pg_true_false: [4, 0, 0] } } });
+  expect(practiceCells(d, true).map((c) => `${c.skill}:${c.difficulty}`).sort()).toEqual(["implement:1", "implement:2", "pg_true_false:1"]);
+});
+it("detecta cantidades pendientes dentro de una dificultad ya existente", () => {
+  const d = design(f("4.7 Parcial"), { manifest: { topicType: "mixed", skills: ["implement"], plan: { implement: [4, 0, 0] } }, exercises: [{ skill: "implement", difficulty: 1 }] });
+  expect(practiceCells(d, true)).toEqual([{ skill: "implement", difficulty: 1, required: false }]);
+});
 const complete = (folder: string) =>
   design(folder, { files: ["T.md", "T — mapa.canvas", "T.practica.md"], theoryText: READING_OK, manifest: man, exercises: [1, 2, 3].flatMap((d) => ["implement", "pg_true_false"].map((skill) => ({ skill, difficulty: d }))) });
 

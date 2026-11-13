@@ -111,7 +111,7 @@ export async function openFolderView(entry: TreeEntry, toggle: (path: string) =>
     // Solo lectura: un clic en una carpeta nunca crea archivos. Sin vista, la carpeta solo se despliega.
     const view = await api.studyViewEnsure(entry.path);
     if (view.ok && view.path) {
-      s.refreshTree();
+      if (view.created.length || view.tagged?.length) s.refreshTree();
       // Expanding is not optional: the children have to render too, and a folder
       // that is already open must not be collapsed by the click.
       if (!isOpen) toggle(entry.path);

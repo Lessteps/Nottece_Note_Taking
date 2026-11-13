@@ -10,16 +10,18 @@ import { useApp } from "../../store/app";
 import { useMentor } from "../../store/mentor";
 import { useRegenEngine } from "../../store/regenEngine";
 import { GhostButton, PrimaryButton } from "../common/forms";
+import { useModuleVisible } from "../ModuleHost";
 
 const POLL_MS = 4000;
 const WHAT: Record<RegenHandoff["what"], string> = { theory: "la teoría", practice: "la práctica", exercises: "los ejercicios", all: "todo", "theory+practice": "la teoría y la práctica", "theory+exercises": "la teoría y los ejercicios", "practice+exercises": "la práctica y los ejercicios" };
 
-export function RegenHandoffPanel({ handoff, onClose }: { handoff: RegenHandoff; onClose?: () => void }) {
+export function RegenHandoffPanel({ handoff, onClose, allowHidePending = true }: { handoff: RegenHandoff; onClose?: () => void; allowHidePending?: boolean }) {
   const toast = useApp((s) => s.toast);
   const put = useRegenEngine((s) => s.putHandoff);
   const drop = useRegenEngine((s) => s.dropHandoff);
   const [busy, setBusy] = useState<"" | "validate" | "restore">("");
   const [asking, setAsking] = useState(false);
+  const moduleVisible = useModuleVisible();
   const alive = useRef(true);
   useEffect(() => {
     alive.current = true;
@@ -31,12 +33,22 @@ export function RegenHandoffPanel({ handoff, onClose }: { handoff: RegenHandoff;
   // «el agente ya escribió»: se mira cada pocos segundos cuántos archivos esperados existen (la validación sigue siendo un clic)
   const open = handoff.status === "waiting" || handoff.status === "failed";
   useEffect(() => {
-    if (!open) return;
-    const t = setInterval(() => {
-      api.studyTopicRegenerateHandoffStatus(handoff.id).then((h) => alive.current && put(h)).catch(() => undefined);
-    }, POLL_MS);
-    return () => clearInterval(t);
-  }, [open, handoff.id, put]);
+    if (!open || !moduleVisible) return;
+    let active = true;
+    let pending = false;
+    const poll = () => {
+      if (!active || pending || document.visibilityState === "hidden") return;
+      pending = true;
+      api.studyTopicRegenerateHandoffStatus(handoff.id)
+        .then((h) => { if (active && alive.current) put(h); })
+        .catch(() => undefined)
+        .finally(() => { pending = false; });
+    };
+    const onVisibility = () => { if (document.visibilityState !== "hidden") poll(); };
+    const t = setInterval(poll, POLL_MS);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => { active = false; clearInterval(t); document.removeEventListener("visibilitychange", onVisibility); };
+  }, [open, handoff.id, put, moduleVisible]);
 
   const run = async (restore: boolean): Promise<void> => {
     setBusy(restore ? "restore" : "validate");
@@ -60,12 +72,20 @@ export function RegenHandoffPanel({ handoff, onClose }: { handoff: RegenHandoff;
     toast("info", "Instrucción copiada: pégala en Antigravity o en Claude Code.");
   };
   const failing = handoff.topics.filter((t) => t.state === "error");
+  const copyErrors = async (): Promise<void> => {
+    const details = failing.map((t) => `${t.title}\n${t.problems.length ? t.problems.map((p) => `- ${p}`).join("\n") : "- No pasó la validación."}`).join("\n\n");
+    const report = [`Tarea: ${handoff.id}`, `Estado: ${handoff.status}`, details, handoff.log.length ? `Registro:\n${handoff.log.join("\n")}` : ""].filter(Boolean).join("\n\n");
+    try {
+      if (await copyText(report)) toast("info", "Errores de generación copiados.");
+      else toast("error", "No se pudieron copiar los errores.");
+    } catch (e) { toast("error", (e as Error).message || "No se pudieron copiar los errores."); }
+  };
   const { found, expected } = handoff.ready;
 
   return (
     <section className="space-y-2.5 rounded-xl border border-accent bg-card p-3 text-[13.5px]" data-testid="handoff-regen-panel" data-status={handoff.status}>
       <p className="font-semibold">
-        {handoff.status === "validated" ? "Listo: el resultado del agente se validó y se aplicó." : handoff.status === "restored" ? "Se devolvió lo anterior." : `Tarea para el agente: regenerar ${WHAT[handoff.what]} de ${handoff.topics.length === 1 ? `«${handoff.topics[0]!.title}»` : `${handoff.topics.length} temas`}.`}
+        {handoff.status === "validated" ? "Listo: el resultado del agente se validó y se aplicó." : handoff.status === "restored" ? "Se devolvió lo anterior." : `Tarea para el agente: ${handoff.missingOnly ? "completar" : "regenerar"} ${WHAT[handoff.what]} de ${handoff.topics.length === 1 ? `«${handoff.topics[0]!.title}»` : `${handoff.topics.length} temas`}.`}
       </p>
 
       {open && (
@@ -108,6 +128,7 @@ export function RegenHandoffPanel({ handoff, onClose }: { handoff: RegenHandoff;
       )}
 
       <div className="flex flex-wrap items-center gap-2">
+        {(failing.length > 0 || handoff.status === "failed") && <GhostButton onClick={() => void copyErrors()} data-testid="handoff-regen-copy-errors"><ClipboardCopy size={14} aria-hidden /> Copiar errores</GhostButton>}
         {open && (
           <PrimaryButton onClick={() => void run(false)} disabled={!!busy} data-testid="handoff-regen-validate">
             {busy === "validate" ? <Loader2 size={14} className="animate-spin" aria-hidden /> : null} Ya terminó — validar
@@ -123,7 +144,7 @@ export function RegenHandoffPanel({ handoff, onClose }: { handoff: RegenHandoff;
             <GhostButton onClick={() => setAsking(false)} data-testid="handoff-regen-restore-cancel">No</GhostButton>
           </span>
         )}
-        <GhostButton onClick={() => { drop(handoff.id); onClose?.(); }} disabled={!!busy} data-testid="handoff-regen-close">{open ? "Ocultar" : "Cerrar"}</GhostButton>
+        {(!open || allowHidePending) && <GhostButton onClick={() => { drop(handoff.id); onClose?.(); }} disabled={!!busy} data-testid="handoff-regen-close">{open ? "Ocultar" : "Cerrar"}</GhostButton>}
       </div>
     </section>
   );

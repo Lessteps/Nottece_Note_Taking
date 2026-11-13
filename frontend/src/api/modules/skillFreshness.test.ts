@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { outdatedByFolder } from "./skillFreshness.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { isExercisesOutdated, outdatedByFolder } from "./skillFreshness.js";
 
 let root: string;
 const put = (rel: string, text: string, ageMs = 0): void => {
@@ -19,6 +19,27 @@ beforeEach(() => { root = fs.mkdtempSync(path.join(os.tmpdir(), "nv-skill-")); }
 afterEach(() => { fs.rmSync(root, { recursive: true, force: true }); });
 
 describe("outdatedByFolder", () => {
+  it("reutiliza lecturas durante una consulta y vuelve a leer las versiones en la siguiente", () => {
+    const a = "Matemáticas/Área/A", b = "Matemáticas/Área/B";
+    put("Matemáticas/_skills/resumen_teorico_skill.md", "v1");
+    const version = "00000000";
+    const topics = [[a, "A"], [b, "B"]] as const;
+    for (const [folder, name] of topics) put(`${folder}/${name}.md`, `---\nskill_version: ${version}\n---\nnota`);
+    const read = vi.spyOn(fs, "readFileSync");
+    try {
+      outdatedByFolder(root, [a, b]);
+      const skillPath = path.join(root, "Matemáticas/_skills/resumen_teorico_skill.md");
+      // One read to detect skill changes and one to obtain its version, regardless of topic count.
+      expect(read.mock.calls.filter(([file]) => String(file) === skillPath)).toHaveLength(2);
+      for (const [folder, name] of topics) {
+        const note = path.join(root, folder, `${name}.md`);
+        expect(read.mock.calls.filter(([file]) => String(file) === note)).toHaveLength(1);
+      }
+      read.mockClear();
+      outdatedByFolder(root, [a, b]);
+      expect(read.mock.calls.filter(([file]) => String(file) === skillPath)).toHaveLength(2);
+    } finally { read.mockRestore(); }
+  });
   it("marca la pieza hecha antes del último cambio de su skill, y solo esa", () => {
     put("Matemáticas/_skills/resumen_teorico_skill.md", "v1", DAY);
     put("Matemáticas/_skills/mapa_skill.md", "v1", 3 * DAY);
@@ -149,6 +170,30 @@ describe("arquetipos de programación: practica y ejercicios desactualizados", (
   const INVALID_PRACTICA = `---\ntype: practica\nsubject: programming\ntitle: 2.1.1 Project structure, virtual environments and imports\ntopic_type: mixed\nskills: [pg_true_false, explain, implement]\nplan: "pg_true_false=4/0/0, explain=4/0/0, implement=4/0/0"\n---\n`;
   const VALID_PRACTICA = `---\ntype: practica\nsubject: programming\ntitle: 2.1.1 Project structure, virtual environments and imports\ntopic_type: mixed\nskills: [project_structure, commands, pg_quiz, pg_true_false, explain]\nplan: "project_structure=4/0/0, commands=4/0/0, pg_true_false=4/0/0, explain=4/0/0"\n---\n`;
 
+  it("no marca habilidades archivadas como ejercicios activos desactualizados", () => {
+    put(`${SETUP}/2.1.1 Project structure, virtual environments and imports.practica.md`, VALID_PRACTICA);
+    put(`${SETUP}/Ejercicios/implement/old.md`, "---\ntype: exercise\nmode: implement\narchived: true\n---\n# Histórico");
+    put(`${SETUP}/Ejercicios/project_structure/new.md`, "---\ntype: exercise\nmode: project_structure\n---\n# Activo");
+    expect(outdatedByFolder(root, [SETUP]).get(SETUP)?.exercises).toBeFalsy();
+  });
+
+  it("un tema sin ejercicios no se marca como estructura desactualizada", () => {
+    put(`${SETUP}/2.1.1 Project structure, virtual environments and imports.practica.md`, VALID_PRACTICA);
+    expect(outdatedByFolder(root, [SETUP]).get(SETUP)?.exercises).toBeFalsy();
+  });
+
+  it("acepta el nombre del archivo como ID y sigue detectando IDs duplicados", () => {
+    put(`${SETUP}/2.1.1 Project structure, virtual environments and imports.practica.md`, VALID_PRACTICA);
+    const exercise = (id = "") => `---\ntype: exercise\nmode: project_structure\n${id ? `id: ${id}\n` : ""}---\n`;
+    put(`${SETUP}/Ejercicios/project_structure/one.md`, exercise());
+    put(`${SETUP}/Ejercicios/project_structure/two.md`, exercise());
+    const check = () => isExercisesOutdated(root, SETUP, path.basename(SETUP), "Programación", ["project_structure"]);
+    expect(check()).toBe(false);
+    put(`${SETUP}/Ejercicios/project_structure/one.md`, exercise("same"));
+    put(`${SETUP}/Ejercicios/project_structure/two.md`, exercise("same"));
+    expect(check()).toBe(true);
+  });
+
   it("detecta .practica con habilidades prohibidas para el arquetipo setup (ej: implement)", () => {
     put(`${SETUP}/2.1.1 Project structure, virtual environments and imports.practica.md`, INVALID_PRACTICA);
     const out = outdatedByFolder(root, [SETUP]);
@@ -158,15 +203,15 @@ describe("arquetipos de programación: practica y ejercicios desactualizados", (
   it("detecta carpeta Ejercicios con ejercicios de habilidades prohibidas o sin habilidades requeridas", () => {
     put(`${SETUP}/2.1.1 Project structure, virtual environments and imports.practica.md`, VALID_PRACTICA);
     put(`${SETUP}/Ejercicios/implement/ej_implement_1.md`, "---\nmode: implement\n---\ncode");
-    put(`${SETUP}/Ejercicios/explain/ej_explain_1.md`, "---\nmode: explain\n---\nexplanation");
+    put(`${SETUP}/Ejercicios/explain/ej_explain_1.md`, "---\ntype: exercise\nmode: explain\n---\nexplanation");
     const out = outdatedByFolder(root, [SETUP]);
     expect(out.get(SETUP)).toMatchObject({ exercises: true });
   });
 
   it("un tema setup con practica y ejercicios acordes al arquetipo no sale atrasado", () => {
     put(`${SETUP}/2.1.1 Project structure, virtual environments and imports.practica.md`, VALID_PRACTICA);
-    put(`${SETUP}/Ejercicios/project_structure/ej_struct_1.md`, "---\nmode: project_structure\n---\nstructure");
-    put(`${SETUP}/Ejercicios/explain/ej_explain_1.md`, "---\nmode: explain\n---\nexplanation");
+    put(`${SETUP}/Ejercicios/project_structure/ej_struct_1.md`, "---\ntype: exercise\nmode: project_structure\n---\nstructure");
+    put(`${SETUP}/Ejercicios/explain/ej_explain_1.md`, "---\ntype: exercise\nmode: explain\n---\nexplanation");
     const out = outdatedByFolder(root, [SETUP]);
     expect(out.get(SETUP)?.practica).toBeFalsy();
     expect(out.get(SETUP)?.exercises).toBeFalsy();

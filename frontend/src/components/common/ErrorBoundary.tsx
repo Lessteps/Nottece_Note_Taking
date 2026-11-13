@@ -19,6 +19,10 @@ interface State {
   error: Error | null;
 }
 
+export function isModuleLoadError(error: Error): boolean {
+  return /failed to fetch dynamically imported module|error loading dynamically imported module|loading chunk [\w-]+ failed|importing a module script failed/i.test(error.message);
+}
+
 export class ErrorBoundary extends Component<Props, State> {
   state: State = { error: null };
 
@@ -40,16 +44,17 @@ export class ErrorBoundary extends Component<Props, State> {
   render(): ReactNode {
     const { error } = this.state;
     if (!error) return this.props.children;
+    const moduleLoadFailed = isModuleLoadError(error);
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
         <div className="text-[15px] font-semibold text-text">
           {this.props.what ?? "Esta vista"} no se pudo pintar
         </div>
         <p className="max-w-lg text-[12.5px] leading-relaxed text-dim">
-          La nota sigue intacta en el disco: el fallo es de la vista, no del archivo. Cambia a{" "}
-          <b className="text-text">Editar</b> para verla en crudo, o abre otra nota. El error queda
-          anotado en la consola.
+          {this.props.path ? <>La nota sigue intacta en el disco. Puedes cambiar a <b className="text-text">Editar</b> o abrir otra nota.</> : <>No se pudo mostrar esta sección. Puedes reintentarlo o cambiar a otra parte de la aplicación.</>} El error queda anotado en la consola.
         </p>
+        {moduleLoadFailed && <p className="max-w-lg text-[12.5px] text-dim">Para recuperar el módulo hay que recargar la aplicación. Los cambios que no hayas guardado podrían perderse.</p>}
+        <button type="button" className="rounded-lg border border-line px-3 py-1.5 text-sm hover:bg-hover" onClick={() => moduleLoadFailed ? window.location.reload() : this.setState({ error: null })}>{moduleLoadFailed ? "Recargar aplicación" : "Reintentar"}</button>
         <div className="max-w-lg rounded-lg border border-line bg-card px-3 py-2 text-left">
           <div className="truncate font-mono text-[11px] text-faint" title={this.props.path}>
             {this.props.path ?? "—"}

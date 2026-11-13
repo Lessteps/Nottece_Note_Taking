@@ -281,17 +281,17 @@ export function RouteBanner({ path }: { path: string }) {
       aria-label="Ruta del Mentor"
       data-testid="route-banner"
       data-route={info.route}
-      className={cn("flex flex-none flex-wrap items-center gap-x-3 gap-y-1 border-b px-5 py-1.5 text-[12.5px]", info.route === "skipped" ? "border-line bg-panel text-dim" : "border-accent/30 bg-accent-soft text-text")}
+      className={cn("grid flex-none min-w-0 grid-cols-1 gap-x-3 gap-y-1 border-b px-3 py-2 text-[12.5px] sm:grid-cols-[auto_minmax(14rem,1fr)_auto_auto] sm:items-center sm:px-5", info.route === "skipped" ? "border-line bg-panel text-dim" : "border-accent/30 bg-accent-soft text-text")}
     >
       <RouteBadge info={info} preview={view.preview} />
       {added === folder ? (
         <>
-          <span className="min-w-0 flex-1">Mentor: añadido a tu ruta (semana {info.week}).</span>
+          <span className="min-w-0 break-words sm:col-start-2">Mentor: añadido a tu ruta (semana {info.week}).</span>
           <button type="button" onClick={() => void undo()} className={btn} data-testid="route-undo">Deshacer</button>
         </>
       ) : info.route === "skipped" ? (
         <>
-          <span className="min-w-0 flex-1 break-words" data-testid="route-banner-text">
+          <span className="min-w-0 break-words sm:col-start-2" data-testid="route-banner-text">
             Mentor: fuera de tu ruta{info.reason ? ` (${info.reason})` : ""}. La nota sigue aquí y puedes practicarla igual.
           </span>
           <button type="button" onClick={() => void add()} disabled={busy} className={btn} data-testid="route-add">
@@ -300,7 +300,7 @@ export function RouteBanner({ path }: { path: string }) {
         </>
       ) : (
         <>
-          <span className="min-w-0 flex-1 break-words" data-testid="route-banner-text">
+          <span className="min-w-0 break-words sm:col-start-2" data-testid="route-banner-text">
             {pre}Mentor: este tema {info.route === "optional" ? "es opcional en tu ruta" : "está en tu ruta"} · semana {info.week}
             {link.dayInWeek ? ` · día ${link.dayInWeek}` : ""}
             {link.date ? ` · previsto el ${dateLabel(link.date)}` : ""} · área {info.area} · <span data-testid="route-status">{STATUS_TEXT[link.status]}</span>

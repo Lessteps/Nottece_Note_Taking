@@ -24,6 +24,32 @@ export default defineConfig({
     emptyOutDir: true,
     sourcemap: false,
     chunkSizeWarningLimit: 1500,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules")) {
+            if (id.includes("@codemirror") || id.includes("@lezer")) {
+              return "vendor-codemirror";
+            }
+            if (id.includes("katex") || id.includes("@vscode/markdown-it-katex")) {
+              return "vendor-katex";
+            }
+            if (id.includes("highlight.js")) {
+              return "vendor-highlight";
+            }
+            if (id.includes("markdown-it") || id.includes("dompurify")) {
+              return "vendor-markdown";
+            }
+            if (id.includes("@milkdown") || id.includes("prosemirror")) {
+              return "vendor-milkdown";
+            }
+            if (id.includes("lucide-react")) {
+              return "vendor-lucide";
+            }
+          }
+        },
+      },
+    },
   },
   test: {
     // The suite is logic-only; the fast Node environment is the default. The

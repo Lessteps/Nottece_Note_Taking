@@ -60,16 +60,6 @@ export function skillVersionOf(root: string, subject: string, kind: Kind): strin
   }
 }
 
-/** La versión de la skill con la que se generó un mapa (`canvas_versions.json`), o null si no se sabe. */
-function canvasVersionOf(root: string, rel: string): string | null {
-  try {
-    const all = JSON.parse(fs.readFileSync(path.join(root, ".notevault", "estudio", "canvas_versions.json"), "utf8")) as Record<string, string>;
-    return typeof all[rel] === "string" ? all[rel]! : null;
-  } catch {
-    return null;
-  }
-}
-
 /** Marca un archivo de pieza (nota o `.practica.md`) con la versión actual de su skill. Sin skill o sin frontmatter no hace nada; nunca lanza. */
 export function stampSkillVersion(root: string, subject: string, kind: "theory" | "practica", fileAbs: string): void {
   try {
@@ -262,17 +252,44 @@ export function isExercisesOutdated(
 ): boolean {
   const ejDir = path.join(root, folder, "Ejercicios");
   if (!fs.existsSync(ejDir)) return false;
+  const viewPath = path.join(root, folder, `${path.basename(folder)}.practica.md`);
+  if (!fs.existsSync(viewPath)) return false;
 
   let subdirs: string[] = [];
+  let rootFiles: string[] = [];
   try {
-    subdirs = fs.readdirSync(ejDir, { withFileTypes: true })
-      .filter((d) => d.isDirectory() && !d.name.startsWith("."))
-      .map((d) => d.name);
+    const entries = fs.readdirSync(ejDir, { withFileTypes: true });
+    subdirs = entries.filter((d) => d.isDirectory() && !d.name.startsWith(".")).map((d) => d.name);
+    rootFiles = entries.filter((d) => d.isFile() && d.name.endsWith(".md") && !d.name.endsWith(".ejercicios.md")).map((d) => d.name);
   } catch {
     return false;
   }
 
-  if (subdirs.length === 0) return false;
+  if (subdirs.length === 0 && rootFiles.length === 0) return false;
+  if (rootFiles.length > 0) return true; // contrato: cada ejercicio debe vivir bajo Ejercicios/<skill>/
+
+  // El sistema actual guarda un ejercicio por archivo dentro de Ejercicios/<skill>.
+  // Comprueba sus IDs estables y la coherencia de la ruta con el manifiesto.
+  const byId = new Map<string, string>();
+  for (const skill of subdirs) {
+    const skillDir = path.join(ejDir, skill);
+    let files: string[] = [];
+    try { files = activeExerciseFiles(skillDir); } catch { continue; }
+    for (const name of files) {
+      const abs = path.join(skillDir, name);
+      const raw = readText(abs);
+      const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(raw)?.[1] ?? "";
+      // exerciseIndex usa `id` si existe y, en su ausencia, el nombre del archivo.
+      const id = /^id:\s*["']?([^\r\n"']+)/m.exec(fm)?.[1]?.trim() || path.basename(name, ".md");
+      const prior = byId.get(id);
+      if (prior && prior !== abs) return true;
+      byId.set(id, abs);
+      if (practicaSkills?.length && !practicaSkills.includes(skill)) return true;
+      if (!/^type:\s*exercise\s*$/m.test(fm)) return true;
+      const mode = /^mode:\s*["']?([\w-]+)/m.exec(fm)?.[1]?.trim();
+      if (!mode || mode !== skill) return true;
+    }
+  }
 
   if (subject === "Programación") {
     if (isProgrammingExercisesOutdated(root, folder, topicTitle, practicaSkills, practicaChangedAt)) {
@@ -285,7 +302,7 @@ export function isExercisesOutdated(
     for (const s of subdirs) {
       if (progSkills.has(s)) {
         try {
-          if (fs.readdirSync(path.join(ejDir, s)).some((f) => f.endsWith(".md"))) return true;
+          if (activeExerciseFiles(path.join(ejDir, s)).length > 0) return true;
         } catch {}
       }
     }
@@ -296,7 +313,7 @@ export function isExercisesOutdated(
     for (const s of subdirs) {
       if (foreign.has(s)) {
         try {
-          if (fs.readdirSync(path.join(ejDir, s)).some((f) => f.endsWith(".md"))) return true;
+          if (activeExerciseFiles(path.join(ejDir, s)).length > 0) return true;
         } catch {}
       }
     }
@@ -308,7 +325,7 @@ export function isExercisesOutdated(
     for (const s of subdirs) {
       if (!allowed.has(s)) {
         try {
-          if (fs.readdirSync(path.join(ejDir, s)).some((f) => f.endsWith(".md"))) return true;
+          if (activeExerciseFiles(path.join(ejDir, s)).length > 0) return true;
         } catch {}
       }
     }
@@ -318,7 +335,7 @@ export function isExercisesOutdated(
   if (practicaChangedAt) {
     for (const s of subdirs) {
       try {
-        const files = fs.readdirSync(path.join(ejDir, s)).filter((f) => f.endsWith(".md"));
+        const files = activeExerciseFiles(path.join(ejDir, s));
         for (const f of files) {
           const m = mtime(path.join(ejDir, s, f));
           if (m !== null && m < practicaChangedAt) return true;
@@ -371,6 +388,8 @@ export function isProgrammingExercisesOutdated(
 ): boolean {
   const ejDir = path.join(root, folder, "Ejercicios");
   if (!fs.existsSync(ejDir)) return false;
+  const topicName = path.basename(folder);
+  if (!fs.existsSync(path.join(root, folder, `${topicName}.practica.md`))) return false;
 
   let subdirs: string[] = [];
   try {
@@ -383,6 +402,22 @@ export function isProgrammingExercisesOutdated(
 
   if (subdirs.length === 0) return false;
 
+  const ids = new Map<string, string>();
+  for (const skill of subdirs) {
+    const dir = path.join(ejDir, skill);
+    let files: string[] = [];
+    try { files = activeExerciseFiles(dir); } catch { continue; }
+    for (const name of files) {
+      const file = path.join(dir, name);
+      const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(readText(file))?.[1] ?? "";
+      const id = /^id:\s*["']?([^\r\n"']+)/m.exec(fm)?.[1]?.trim() || path.basename(name, ".md");
+      if (!/^type:\s*exercise\s*$/m.test(fm)) return true;
+      if (ids.has(id) && ids.get(id) !== file) return true;
+      ids.set(id, file);
+      if (practicaSkills?.length && !practicaSkills.includes(skill)) return true;
+    }
+  }
+
   const arch = archetypeOf({ title: topicTitle });
   const forbidden = new Set(ARCHETYPE_FORBIDDEN[arch]);
 
@@ -390,7 +425,7 @@ export function isProgrammingExercisesOutdated(
   for (const s of subdirs) {
     if (forbidden.has(s)) {
       try {
-        const files = fs.readdirSync(path.join(ejDir, s)).filter((f) => f.endsWith(".md"));
+        const files = activeExerciseFiles(path.join(ejDir, s));
         if (files.length > 0) return true;
       } catch {}
     }
@@ -401,14 +436,14 @@ export function isProgrammingExercisesOutdated(
     const hasSetupEx = ["project_structure", "commands"].some((s) => {
       try {
         const p = path.join(ejDir, s);
-        return fs.existsSync(p) && fs.readdirSync(p).some((f) => f.endsWith(".md"));
+        return fs.existsSync(p) && activeExerciseFiles(p).length > 0;
       } catch {
         return false;
       }
     });
     const totalEx = subdirs.reduce((acc, s) => {
       try {
-        return acc + fs.readdirSync(path.join(ejDir, s)).filter((f) => f.endsWith(".md")).length;
+        return acc + activeExerciseFiles(path.join(ejDir, s)).length;
       } catch {
         return acc;
       }
@@ -422,7 +457,7 @@ export function isProgrammingExercisesOutdated(
     for (const s of subdirs) {
       if (!allowed.has(s)) {
         try {
-          const files = fs.readdirSync(path.join(ejDir, s)).filter((f) => f.endsWith(".md"));
+          const files = activeExerciseFiles(path.join(ejDir, s));
           if (files.length > 0) return true;
         } catch {}
       }
@@ -433,7 +468,7 @@ export function isProgrammingExercisesOutdated(
   if (practicaChangedAt) {
     for (const s of subdirs) {
       try {
-        const files = fs.readdirSync(path.join(ejDir, s)).filter((f) => f.endsWith(".md"));
+        const files = activeExerciseFiles(path.join(ejDir, s));
         for (const f of files) {
           const m = mtime(path.join(ejDir, s, f));
           if (m !== null && m < practicaChangedAt) return true;
@@ -445,13 +480,42 @@ export function isProgrammingExercisesOutdated(
   return false;
 }
 
+/** Los ejercicios archivados siguen accesibles por su ruta e ID, pero no forman parte del plan activo. */
+function activeExerciseFiles(dir: string): string[] {
+  try {
+    return fs.readdirSync(dir).filter((name) => name.endsWith(".md") && !name.endsWith(".ejercicios.md")).filter((name) => {
+      const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(readText(path.join(dir, name)))?.[1] ?? "";
+      return !/^archived:\s*(?:true|["']true["'])\s*$/im.test(fm);
+    });
+  } catch { return []; }
+}
+
 /** Para cada carpeta de tema (relativa a la vault), qué piezas existen pero son más viejas que su skill o tienen formato desactualizado. */
 export function outdatedByFolder(root: string, folders: Iterable<string>): Map<string, OutdatedSkills> {
   const list = [...folders];
   const subjectOf = (folder: string): string => folder.split("/")[0] ?? "";
   const times = skillChangeTimes(root, new Set(list.map(subjectOf).filter(Boolean)));
+  // Cache only for this scan: edits are observed on the next invocation.
+  const versions = new Map<string, string | null>();
+  const contents = new Map<string, string>();
+  const textOf = (file: string): string => {
+    if (!contents.has(file)) contents.set(file, fs.readFileSync(file, "utf8"));
+    return contents.get(file)!;
+  };
+  let canvasVersions: Record<string, unknown> | undefined;
+  const canvasStamp = (rel: string): string | null => {
+    if (!canvasVersions) {
+      try {
+        const parsed: unknown = JSON.parse(fs.readFileSync(path.join(root, ".notevault", "estudio", "canvas_versions.json"), "utf8"));
+        canvasVersions = parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : {};
+      } catch { canvasVersions = {}; }
+    }
+    const value = canvasVersions[rel];
+    return typeof value === "string" ? value : null;
+  };
   const out = new Map<string, OutdatedSkills>();
   for (const folder of list) {
+    contents.clear();
     const subject = subjectOf(folder);
     const name = folder.split("/").pop() ?? "";
     if (!subject || !name) continue;
@@ -462,8 +526,14 @@ export function outdatedByFolder(root: string, folders: Iterable<string>): Map<s
       const filePath = path.join(root, folder, pieces[kind]);
       const made = mtime(filePath);
       // con marca de versión manda la marca (la pieza dice con qué skill se hizo); sin marca, la fecha del archivo
-      const stamp = made !== null ? (kind === "canvas" ? canvasVersionOf(root, path.posix.join(folder, pieces.canvas)) : stampOf(readText(filePath))) : null;
-      const current = stamp ? skillVersionOf(root, subject, kind) : null;
+      let stamp: string | null = null;
+      if (made !== null) {
+        if (kind === "canvas") stamp = canvasStamp(path.posix.join(folder, pieces.canvas));
+        else { try { stamp = stampOf(textOf(filePath)); } catch { /* structural check below handles unreadable files */ } }
+      }
+      const key = `${subject}/${kind}`;
+      if (stamp && !versions.has(key)) versions.set(key, skillVersionOf(root, subject, kind));
+      const current = stamp ? versions.get(key) ?? null : null;
       if (stamp && current) {
         if (stamp !== current) stale[kind] = true;
       } else if (changed !== undefined && made !== null && made < changed) stale[kind] = true;
@@ -473,7 +543,7 @@ export function outdatedByFolder(root: string, folders: Iterable<string>): Map<s
     const thPath = path.join(root, folder, pieces.theory);
     if (fs.existsSync(thPath)) {
       try {
-        const rawTh = fs.readFileSync(thPath, "utf8");
+        const rawTh = textOf(thPath);
         if (isTheoryOutdated(rawTh, subject)) {
           stale.theory = true;
         }
@@ -484,7 +554,7 @@ export function outdatedByFolder(root: string, folders: Iterable<string>): Map<s
     const cvPath = path.join(root, folder, pieces.canvas);
     if (fs.existsSync(cvPath)) {
       try {
-        const rawCv = fs.readFileSync(cvPath, "utf8");
+        const rawCv = textOf(cvPath);
         if (isCanvasOutdated(rawCv, !!stale.theory, subject)) {
           stale.canvas = true;
         }
@@ -496,7 +566,7 @@ export function outdatedByFolder(root: string, folders: Iterable<string>): Map<s
     let practicaSkills: string[] | undefined;
     if (fs.existsSync(prPath)) {
       try {
-        const rawPr = fs.readFileSync(prPath, "utf8");
+        const rawPr = textOf(prPath);
         if (isPracticaOutdated(rawPr, name, subject)) {
           stale.practica = true;
         }

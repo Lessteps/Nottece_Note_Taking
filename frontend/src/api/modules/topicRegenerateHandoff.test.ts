@@ -152,7 +152,9 @@ describe("la tarea para el agente externo", () => {
     const e = await make().study_topic_regenerate_handoff(A, "exercises", true);
     const mdE = read(e.task);
     expect(mdE).toContain("ejercicios_implement_d1.json");
-    expect(mdE).toContain("exactly 4 objects");
+    expect(mdE).toContain("exactly the planned number of objects");
+    expect(mdE).toContain("ejercicios_implement_d2.json");
+    expect(mdE).toContain("ejercicios_implement_d3.json");
     expect(mdE).toContain('"title","statement","hints"');
     // los ejercicios actuales se COPIAN (no se mueven) hasta validar
     expect(exists(`${e.topics[0]!.backup}/Ejercicios/implement/ej_implement_d1_1_0.md`)).toBe(true);
@@ -282,19 +284,99 @@ describe("validar lo que escribió el agente", () => {
     expect(read(`${A}/4.1 Uno.practica.md`)).toContain("implement=2/0/0");
   });
 
+  it("completa solamente los ejercicios faltantes y conserva los anteriores", async () => {
+    put(`${A}/4.1 Uno.practica.md`, PRACTICA(["implement"], "mixed", 'plan: "implement=4/2/0"\n'));
+    const api = make();
+    const h = await api.study_topic_regenerate_handoff(A, "exercises", true, { missingOnly: true });
+    const md = read(h.task);
+    expect(md).toContain("difficulty 1 · 3 exercises");
+    expect(md).toContain("difficulty 2 · 2 exercises");
+    expect(md).toContain("Do not replace or remove existing exercises");
+    put(`${h.resultDir}/01 4.1 Uno/ejercicios_implement_d1.json`, JSON.stringify([ex(1), ex(2), ex(3)]));
+    put(`${h.resultDir}/01 4.1 Uno/ejercicios_implement_d2.json`, JSON.stringify([ex(4), ex(5)]));
+    const result = await api.study_topic_regenerate_validate(h.id);
+    expect(result.status).toBe("validated");
+    expect(result.topics[0]!.created).toHaveLength(5);
+    expect(read(`${A}/Ejercicios/implement/ej_implement_d1_1_0.md`)).toBe(OLD_EX);
+  });
+
+  it("valida en una sola tarea la práctica de un tema y los ejercicios faltantes de otro", async () => {
+    put(`${A}/4.1 Uno.practica.md`, PRACTICA(["implement"], "mixed", 'plan: "implement=4/0/0"\n'));
+    const api = make();
+    const h = await api.study_topic_regenerate_handoff([A, B], "all", true, { missingOnly: true, work: [{ folder: A, steps: ["exercises"] }, { folder: B, steps: ["practice"] }] });
+    expect(h.topics).toHaveLength(2);
+    const md = read(h.task);
+    expect(md).toContain("3 exercises");
+    expect(md).toContain("02 4.2 Dos/practica.json");
+    put(`${h.resultDir}/01 4.1 Uno/ejercicios_implement_d1.json`, JSON.stringify([ex(1), ex(2), ex(3)]));
+    put(`${h.resultDir}/02 4.2 Dos/practica.json`, PLAN_JSON);
+    const done = await api.study_topic_regenerate_validate(h.id);
+    expect(done.status).toBe("validated");
+    expect(done.topics.map((t) => t.done)).toEqual([["exercises"], ["practice"]]);
+    expect(read(`${A}/Ejercicios/implement/ej_implement_d1_1_0.md`)).toBe(OLD_EX);
+    expect(read(`${B}/4.2 Dos.practica.md`)).toContain("implement=2/0/0");
+  });
+
+  it("actualiza la práctica y añade solo la diferencia del nuevo plan", async () => {
+    const api = make();
+    const h = await api.study_topic_regenerate_handoff(A, "all", true, { missingOnly: true, work: [{ folder: A, steps: ["practice", "exercises"] }] });
+    expect(read(h.task)).toContain("Existing exercise counts");
+    put(`${h.resultDir}/01 4.1 Uno/practica.json`, PLAN_JSON);
+    put(`${h.resultDir}/01 4.1 Uno/ejercicios_implement_d1.json`, JSON.stringify([ex(1)]));
+    const done = await api.study_topic_regenerate_validate(h.id);
+    expect(done.status).toBe("validated");
+    expect(done.topics[0]!.created).toHaveLength(1);
+    expect(read(`${A}/Ejercicios/implement/ej_implement_d1_1_0.md`)).toBe(OLD_EX);
+  });
+
+  it("no duplica ejercicios si la cantidad pendiente cambia después de crear la tarea", async () => {
+    put(`${A}/4.1 Uno.practica.md`, PRACTICA(["implement"], "mixed", 'plan: "implement=4/0/0"\n'));
+    const api = make();
+    const h = await api.study_topic_regenerate_handoff(A, "exercises", true, { missingOnly: true });
+    put(`${h.resultDir}/01 4.1 Uno/ejercicios_implement_d1.json`, JSON.stringify([ex(1), ex(2), ex(3)]));
+    put(`${A}/Ejercicios/implement/added-later.md`, OLD_EX);
+    const result = await api.study_topic_regenerate_validate(h.id);
+    expect(result.status).toBe("failed");
+    expect(result.topics[0]!.problems.join(" ")).toContain("cantidad pendiente");
+    expect(result.topics[0]!.created).toHaveLength(0);
+  });
+
+  it("no deja un lote parcial si un nombre de ejercicio ya existe", async () => {
+    put(`${A}/4.1 Uno.practica.md`, PRACTICA(["implement"], "mixed", 'plan: "implement=4/2/0"\n'));
+    const api = make();
+    const h = await api.study_topic_regenerate_handoff(A, "exercises", true, { missingOnly: true });
+    put(`${h.resultDir}/01 4.1 Uno/ejercicios_implement_d1.json`, JSON.stringify([ex(1), ex(2), ex(3)]));
+    put(`${h.resultDir}/01 4.1 Uno/ejercicios_implement_d2.json`, JSON.stringify([ex(4), ex(5)]));
+    const clock = vi.spyOn(Date, "now").mockReturnValue(123456789);
+    try {
+      const collision = `${A}/Ejercicios/implement/ej_implement_d2_123456789_1.md`;
+      put(collision, "do not overwrite");
+      const result = await api.study_topic_regenerate_validate(h.id);
+      expect(result.status).toBe("failed");
+      expect(result.topics[0]!.problems.join(" ")).toContain("no se sobrescribió ningún ejercicio");
+      expect(read(collision)).toBe("do not overwrite");
+      expect(exists(`${A}/Ejercicios/implement/ej_implement_d1_123456789_1.md`)).toBe(false);
+    } finally { clock.mockRestore(); }
+  });
+
   it("ejercicios: valida el esquema, escribe las notas y archiva los anteriores", async () => {
+    put(`${A}/4.1 Uno.practica.md`, PRACTICA(["implement"], "mixed", 'plan: "implement=4/2/0"\n'));
     const api = make();
     const h = await api.study_topic_regenerate_handoff(A, "exercises", true);
     const out = `${h.resultDir}/01 4.1 Uno/ejercicios_implement_d1.json`;
     put(out, JSON.stringify([ex(1), { title: "roto", statement: "x" }, ex(3)]));
     const bad = await api.study_topic_regenerate_validate(h.id);
-    expect(bad.topics[0]!.problems[0]).toContain("solo 2 ejercicio(s) válido(s)");
+    expect(bad.topics[0]!.problems[0]).toContain("2 ejercicio(s) válido(s)");
     expect(exists(`${A}/Ejercicios/implement/ej_implement_d1_1_0.md`)).toBe(true); // los viejos siguen ahí
 
     put(out, JSON.stringify([ex(1), ex(2), ex(3), ex(4)]));
+    put(`${h.resultDir}/01 4.1 Uno/ejercicios_implement_d2.json`, JSON.stringify([ex(5), { ...ex(6), hints: [] }]));
+    const withoutHints = await api.study_topic_regenerate_validate(h.id);
+    expect(withoutHints.topics[0]!.problems.join(" ")).toContain("pistas");
+    put(`${h.resultDir}/01 4.1 Uno/ejercicios_implement_d2.json`, JSON.stringify([ex(5), ex(6)]));
     const ok = await api.study_topic_regenerate_validate(h.id);
     expect(ok.status).toBe("validated");
-    expect(ok.topics[0]!.created).toHaveLength(4);
+    expect(ok.topics[0]!.created).toHaveLength(6);
     const files = fs.readdirSync(abs(`${A}/Ejercicios/implement`));
     expect(files.filter((f) => f.startsWith("ej_implement_d1_"))).toHaveLength(4);
     expect(files).not.toContain("ej_implement_d1_1_0.md"); // archivado

@@ -289,7 +289,7 @@ export class NotesService {
 
   isBookmarked(filePath: string): boolean {
     const resolved = path.resolve(filePath);
-    return this.bookmarks().some((b) => path.resolve(b) === resolved);
+    return this.bookmarksRich().some((b) => b.type === "note" && path.resolve(path.join(this.root, b.target)) === resolved);
   }
 
   toggleBookmark(filePath: string): boolean {

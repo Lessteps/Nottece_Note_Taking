@@ -3,6 +3,7 @@
 
 import * as fs from "node:fs";
 import { markOwnWrite } from "../../core/ownWrites.js";
+import { archiveCanvasAlternates } from "../../core/canvas/canvasVersions.js";
 import * as path from "node:path";
 import { ApiError } from "../../core/errors.js";
 import { kindFor } from "../../core/fileKinds.js";
@@ -91,6 +92,8 @@ export function notesApi(app: AppState) {
       if (!fs.statSync(folder).isDirectory()) {
         throw new ApiError("No es una carpeta.");
       }
+      // Las variantes generadas antiguas se guardan en papelera solo si existe el mapa principal.
+      try { archiveCanvasAlternates(app.root, folder); } catch { /* no impedir abrir la carpeta si no se puede archivar */ }
       return app.service.childrenOf(folder).map((i) => app.entry(i));
     },
 

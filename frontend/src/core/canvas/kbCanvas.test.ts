@@ -233,7 +233,7 @@ describe("buildConceptCanvas", () => {
 });
 
 describe("writeGenerated", () => {
-  it("rewrites its own canvas but never an edited one", () => {
+  it("mantiene un mapa visible y guarda las versiones editadas", () => {
     const { root, concepto } = makeVault();
     const doc = buildConceptCanvas(readConcept(concepto, root));
     const target = path.join(concepto, "1.9 Concepto de prueba — mapa.canvas");
@@ -244,12 +244,15 @@ describe("writeGenerated", () => {
     expect(writeGenerated(target, doc, root)).toContain("written");
     expect(fs.existsSync(target.replace(/\.canvas$/, ".nuevo.canvas"))).toBe(false);
 
-    // The user edits it → the next pass writes .nuevo.canvas and keeps the original.
+    // Al regenerar un mapa editado, se conserva una copia recuperable.
     fs.appendFileSync(target, "\n", "utf-8");
     const edited = fs.readFileSync(target, "utf-8");
-    expect(writeGenerated(target, doc, root)).toContain("kept (user-edited)");
-    expect(fs.readFileSync(target, "utf-8")).toBe(edited);
-    expect(fs.existsSync(target.replace(/\.canvas$/, ".nuevo.canvas"))).toBe(true);
+    expect(writeGenerated(target, doc, root)).toContain("written");
+    expect(fs.readFileSync(target, "utf-8")).not.toBe(edited);
+    expect(fs.existsSync(target.replace(/\.canvas$/, ".nuevo.canvas"))).toBe(false);
+    const trash = path.join(root, ".trash", "mapas");
+    const copies = fs.readdirSync(trash).map((d) => path.join(trash, d, path.relative(root, target)));
+    expect(copies.some((p) => fs.existsSync(p) && fs.readFileSync(p, "utf-8") === edited)).toBe(true);
   });
 });
 

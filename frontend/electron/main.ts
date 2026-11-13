@@ -18,8 +18,13 @@ app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 
 // Configure GPU and rendering switches before app ready to maximize performance and respect settings
 try {
-  if (process.platform === "linux" && !app.commandLine.hasSwitch("ozone-platform")) {
-    app.commandLine.appendSwitch("ozone-platform", "x11");
+  if (process.platform === "linux" && !app.commandLine.hasSwitch("ozone-platform") && !app.commandLine.hasSwitch("ozone-platform-hint")) {
+    const isWayland = process.env.XDG_SESSION_TYPE === "wayland" || Boolean(process.env.WAYLAND_DISPLAY);
+    if (isWayland) {
+      app.commandLine.appendSwitch("ozone-platform-hint", "auto");
+    } else {
+      app.commandLine.appendSwitch("ozone-platform", "x11");
+    }
   }
   const rendering = AppConfig.get_rendering();
   if (rendering.mode === "software") {

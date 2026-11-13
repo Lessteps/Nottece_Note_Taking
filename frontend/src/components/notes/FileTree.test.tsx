@@ -35,6 +35,7 @@ describe("openFolderView", () => {
 
     await openFolderView(folder("Matemáticas/1 Aritmética/1.1 X"), toggle, false);
 
+    expect(useApp.getState().refreshTree).not.toHaveBeenCalled();
     expect(toggle).toHaveBeenCalledWith("Matemáticas/1 Aritmética/1.1 X");
     expect(useApp.getState().openNote).toHaveBeenCalledWith("Matemáticas/1 Aritmética/1.1 X/1.1 X.practica.md");
   });

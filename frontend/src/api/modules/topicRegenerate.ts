@@ -20,7 +20,8 @@ import { AIConfig } from "../../core/aiClient.js";
 import { ApiError } from "../../core/errors.js";
 import { engineBlockedReason, REGEN_ENGINES, type RegenEngine } from "./regenEngines.js";
 import { generateConcept } from "../../../tools/kb_canvas";
-import { diskExercises, scanTopicDesigns } from "../../core/mentor/topicDesignScan.js";
+import { diskExercises, readRawManifest, scanTopicDesigns } from "../../core/mentor/topicDesignScan.js";
+import { parseExercise } from "../../core/practice/exerciseNote.js";
 import { clearExerciseIndexCache } from "../../core/practice/exerciseIndex.js";
 import { practiceCells } from "../../lib/planExecution.js";
 import { AppConfig } from "../appConfig.js";
@@ -127,8 +128,24 @@ export function topicRegenerateApi(app: AppState, hooks: RegenHooks = {}) {
       await withAiSignal(signal, () => reevaluateTopic(app, folder, { createView: true }));
     },
     async buildExercises(folder, skill, difficulty, signal) {
-      const r = await withAiSignal(signal, () => study.study_topic_session_build(folder, skill, difficulty, "3-5", "no_help"));
-      return r.exercises.filter((e) => e.is_new).map((e) => e.path.replace(/\\/g, "/"));
+      const dir = path.join(app.root, ...folder.split("/"));
+      const manifest = readRawManifest(path.join(dir, `${path.basename(dir)}.practica.md`));
+      const expected = manifest?.plan?.[skill]?.[difficulty - 1] ?? 0;
+      const r = await withAiSignal(signal, () => study.study_topic_session_build(folder, skill, difficulty, expected > 0 ? "ai" : "3-5", "no_help"));
+      const created = r.exercises.filter((e) => e.is_new);
+      try {
+        if (r.exercises.length < (expected || 4)) throw new Error(`Solo se generaron ${r.exercises.length} de ${expected || 4} ejercicios para ${skill} d${difficulty}.`);
+        for (const ex of created) {
+          const note = parseExercise(fs.readFileSync(app.resolve(ex.path, { allowRoot: false }), "utf8"));
+          if (!note.hints.some((h) => h.trim() && !/^\(?\s*(no hints|sin pistas)/i.test(h))) throw new Error(`El ejercicio «${ex.title}» no tiene pistas.`);
+        }
+      } catch (e) {
+        for (const ex of created) {
+          try { fs.unlinkSync(app.resolve(ex.path, { allowRoot: false })); } catch { /* la copia anterior permanece en el respaldo */ }
+        }
+        throw e;
+      }
+      return created.map((e) => e.path.replace(/\\/g, "/"));
     },
   };
   const generateMap =
@@ -208,7 +225,7 @@ export function topicRegenerateApi(app: AppState, hooks: RegenHooks = {}) {
           say(`✗ ${job.error}`);
         } else {
           for (const c of canvasesNow()) if (!had.has(c)) job.created.push(rel(path.join(topicAbs, c)));
-          say(r.alt ? "✓ Tu canvas tiene cambios a mano: se conservó y el nuevo se guardó aparte como «.nuevo.canvas»." : "✓ Mapa regenerado.");
+          say(r.alt ? "✓ El mapa anterior se guardó en la papelera y se actualizó el mapa principal." : "✓ Mapa regenerado.");
         }
       } catch (e) {
         job.error = (e as Error).message;
@@ -333,6 +350,9 @@ export function topicRegenerateApi(app: AppState, hooks: RegenHooks = {}) {
       // no se generó nada: se devuelve el juego anterior (nunca se deja el tema sin ejercicios por un fallo)
       giveBack();
       job.error = `${lastError || "La IA no devolvió ejercicios válidos."}${moved.length ? " — se devolvieron los ejercicios anteriores." : ""}`;
+      say(`✗ ${job.error}`);
+    } else if (lastError) {
+      job.error = `Regeneración incompleta: ${lastError}. Se crearon ${made} ejercicio(s); la copia anterior está en ${job.backup}.`;
       say(`✗ ${job.error}`);
     } else {
       say(`✓ ${made} ejercicio(s) nuevos. Los anteriores quedan archivados en ${job.backup}/Ejercicios.`);

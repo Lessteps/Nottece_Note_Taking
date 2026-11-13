@@ -115,7 +115,7 @@ export function buildProgrammingExercisePrompt(
     "5. Bugs and problems must be found by reasoning about behaviour and output, never by spotting a syntax error or a style issue.",
     helper
       ? "6. Assistance is HELPER: hints give progressive guidance on what to look at and why, never the answer."
-      : "6. Assistance is NO HELP: hints are minimal or absent (only name the general kind of failure to watch for).",
+      : "6. Include 1–3 optional progressive hints for every exercise, without revealing the solution. They are shown only when the learner enables Helper; no-help attempts remain possible.",
     "7. Mastery signal only: the solution gives the expected result and a model answer; it never lectures a long derivation.",
     anchors ? `Realistic failure modes of this discipline (use them when the skill involves finding problems):\n${anchors}` : "",
     "OUTPUT: return ONLY a valid JSON array of exercise objects, no other text. Each object has:",

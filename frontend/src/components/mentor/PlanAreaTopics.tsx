@@ -16,6 +16,9 @@ import { api } from "../../lib/bridge";
 import { exercisesGap, isOutdated, matchesStatus, planBulk, regenBlockedReason, STATUS_FILTERS, type BulkPlan, type RegenKind, type StatusFilter } from "../../lib/topicSelection";
 import { useApp } from "../../store/app";
 import { useMentor } from "../../store/mentor";
+import { useRegenEngine } from "../../store/regenEngine";
+import { RegenHandoffPanel } from "./RegenHandoffPanel";
+import type { RegenHandoff } from "../../lib/types";
 import { useNavState } from "../../store/navState";
 import { TOPIC_HIGHLIGHT_KEY } from "./mentorNav";
 import { type AreaTopicRow, areaTabsOf, areaTopicRows, basesTopicRows, BASES_KEY, groupTabsOf, pendingGenerate, rowsOfGroup, type AreaTab, type GroupTab } from "../../lib/planAreaTopics";
@@ -213,9 +216,19 @@ const OUTDATED_KINDS = [
 function OutdatedButtons({ row, busy, onAsk }: { row: AreaTopicRow; busy: boolean; onAsk: (what: RegenKind, row: AreaTopicRow) => void }) {
   const list = OUTDATED_KINDS.filter((k) => row.outdated?.[k.key]);
   const ex = exercisesGap(row);
-  if (list.length === 0 && !ex) return null;
+  if (list.length === 0 && !ex && !row.practiceMismatch) return null;
   return (
     <span className="mt-1 flex flex-wrap gap-1" data-testid="outdated-buttons">
+      {row.practiceMismatch && (
+        <span className="inline-flex min-h-7 items-center gap-1 rounded-md border border-danger/60 bg-danger-soft px-2 text-[12px] font-medium text-danger" role="status" title="La estructura de ejercicios, sus IDs o su estado de actualización no coincide con la práctica actual">
+          Estructura de ejercicios desactualizada
+        </span>
+      )}
+      {row.outdated?.practica && (
+        <span className="inline-flex min-h-7 items-center gap-1 rounded-md border border-danger/60 bg-danger-soft px-2 text-[12px] font-medium text-danger" role="status" title="El manifiesto de práctica no coincide con la skill actual">
+          Práctica desactualizada
+        </span>
+      )}
       {ex && !row.outdated?.exercises && (() => {
         const why = busy ? "Hay una regeneración en curso." : regenBlockedReason(row, ex.what);
         return (
@@ -319,6 +332,10 @@ export function PlanAreaTopics({ plan, schedule, today, started, progress, only 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [asking, setAsking] = useState<BulkPlan | null>(null);
   const [genChain, setGenChain] = useState<AreaTopicRow[]>([]);
+  const [missingBatch, setMissingBatch] = useState<AreaTopicRow[] | null>(null);
+  const [missingHandoff, setMissingHandoff] = useState<RegenHandoff | null>(null);
+  const [missingBusy, setMissingBusy] = useState(false);
+  const handoffs = useRegenEngine((s) => s.handoffs);
   const { queue, start, stop, dismiss } = useRegenQueue();
   const queueBusy = !!queue?.running;
   const [highlighted, setHighlighted] = useState<string | null>(null);
@@ -412,11 +429,35 @@ export function PlanAreaTopics({ plan, schedule, today, started, progress, only 
     if (!p || p.run.length === 0) return;
     void start(p.what, p.run, { alsoMap });
   };
-  // «Generar lo que falta» de la selección: el diálogo de «Ejecutar plan» (uno por tema) de los que están en ruta y les falta algo
+  // Incluye faltantes y piezas desactualizadas de todos los temas seleccionados.
   const generateMissing = (): void => {
-    const todo = selectedRows.filter((r) => r.route !== "skipped" && r.incomplete);
-    if (todo.length === 0) useApp.getState().toast("info", "A los temas elegidos no les falta nada que generar.");
-    else setGenChain(todo);
+    const todo = selectedRows.filter((r) => r.route !== "skipped" && (r.incomplete || exercisesGap(r) !== null || isOutdated(r)));
+    if (!todo.length) useApp.getState().toast("info", "A los temas elegidos no les falta nada que generar ni actualizar.");
+    else setMissingBatch(todo);
+  };
+  const missingSteps = (r: AreaTopicRow): Array<"theory" | "map" | "practice" | "exercises"> => {
+    const steps: Array<"theory" | "map" | "practice" | "exercises"> = [];
+    if (!r.theory || r.outdated?.theory) steps.push("theory");
+    else if (!r.canvas || r.outdated?.canvas) steps.push("map");
+    if (!r.manifest || r.outdated?.practica) steps.push("practice");
+    if (steps.includes("practice") || exercisesGap(r) || r.outdated?.exercises || r.practiceMismatch) steps.push("exercises");
+    return steps;
+  };
+  const createMissingBatch = async (): Promise<void> => {
+    if (!missingBatch?.length || missingBusy) return;
+    const invalid = missingBatch.find((r) => !r.exists || !r.manifest || (r.exercises > 0 && (r.outdated?.exercises || r.practiceMismatch)));
+    if (invalid) {
+      useApp.getState().toast("error", `No se creó la tarea: «${invalid.title}» necesita ${!invalid.exists ? "crear la carpeta del tema" : !invalid.manifest ? "un manifiesto de práctica" : "revisar sus ejercicios desactualizados"}.`);
+      return;
+    }
+    setMissingBusy(true);
+    try {
+      const work = missingBatch.map((r) => ({ folder: r.folder, steps: missingSteps(r) }));
+      const h = await api.studyTopicRegenerateHandoff(work.map((w) => w.folder), "all", true, { missingOnly: true, includeRecommended: true, work });
+      useRegenEngine.getState().putHandoff(h);
+      setMissingHandoff(h);
+    } catch (e) { useApp.getState().toast("error", (e as Error).message); }
+    finally { setMissingBusy(false); }
   };
 
   // «Agregar nuevos temas» + «Verificar metodología» del alcance donde estás (la asignatura, o el área si no hay asignaturas); arriba y abajo de la tabla
@@ -618,7 +659,7 @@ export function PlanAreaTopics({ plan, schedule, today, started, progress, only 
             <div className="min-w-0 flex-1 basis-72 text-[14.5px]">
               <strong>{active.area}</strong> · {active.total} {active.total === 1 ? "tema" : "temas"} · {active.done} completados ·{" "}
               {active.missing > 0 ? <span className="text-warn">{active.missing} por generar</span> : <span className="text-mint">nada por generar</span>}
-              {outdatedCount > 0 && <span className="text-mint" data-testid="outdated-count"> · {outdatedCount} con skill nueva por regenerar</span>}
+              {outdatedCount > 0 && <span className="text-danger" data-testid="outdated-count"> · {outdatedCount} con contenido desactualizado</span>}
               <span className="mt-1.5 block max-w-md"><ProgressBar pct={active.total ? Math.round((active.done / active.total) * 100) : 0} label={`Avance de ${active.area}`} /></span>
             </div>
             {!isBases && <GenerateButton
@@ -912,6 +953,11 @@ export function PlanAreaTopics({ plan, schedule, today, started, progress, only 
         </>
       )}
 
+      {missingBatch && (
+        <Modal title="Generar y actualizar temas seleccionados" onClose={() => { setMissingBatch(null); setMissingHandoff(null); }} width={760} footer={<><GhostButton onClick={() => { setMissingBatch(null); setMissingHandoff(null); }}>Cerrar</GhostButton>{!missingHandoff && <GhostButton disabled={missingBusy || missingBatch.some(isOutdated)} title={missingBatch.some(isOutdated) ? "La IA de la app todavía no actualiza piezas desactualizadas en este flujo" : undefined} onClick={() => { setGenChain(missingBatch); setMissingBatch(null); }} data-testid="batch-missing-internal">Usar IA de la app</GhostButton>}{!missingHandoff && <PrimaryButton disabled={missingBusy} onClick={() => void createMissingBatch()} data-testid="batch-missing-create">{missingBusy ? "Creando…" : "Crear prompt para todos"}</PrimaryButton>}</>}>
+          {missingHandoff ? <RegenHandoffPanel handoff={handoffs[missingHandoff.id] ?? missingHandoff} /> : <div data-testid="batch-missing-review" className="space-y-2"><p>Se creará una sola tarea con las piezas indicadas para cada tema. Los ejercicios existentes se conservan.</p><ul className="list-disc pl-5">{missingBatch.map((r) => <li key={r.folder}>{r.title}: {missingSteps(r).join(", ") || "revisar"}{(!r.exists || !r.manifest || (r.exercises > 0 && (r.outdated?.exercises || r.practiceMismatch))) && " — requiere revisión antes de crear la tarea"}</li>)}</ul></div>}
+        </Modal>
+      )}
       {asking && <BulkConfirm plan={asking} onCancel={() => setAsking(null)} onConfirm={confirmBulk} />}
       {genChain.length > 0 && (
         <ExecuteDialog
@@ -919,6 +965,7 @@ export function PlanAreaTopics({ plan, schedule, today, started, progress, only 
           planId={plan.id}
           proposed={!!plan.proposed}
           initialScope={topicScope(genChain[0]!.folder)}
+          queueNotice={`Este diálogo y el prompt cubren solo «${genChain[0]!.title}». ${genChain.length > 1 ? `Quedan ${genChain.length - 1} tema(s) en la cola; al cerrar este diálogo se abre el siguiente.` : "No quedan más temas en esta cola."} El contenido desactualizado se regenera aparte y no se incluye al generar lo que falta.`}
           onClose={() => setGenChain((c) => c.slice(1))}
           onStarted={() => {
             useMentor.setState((st) => ({ planVersion: st.planVersion + 1 }));

@@ -41,10 +41,11 @@ import { ProgressOverview, type BoardRow } from "./PlanBoard";
 import { usePlanAreaPractice } from "./PracticeCard";
 import { RunProjects } from "./PlanRunPractice";
 import { RunArea, RunBases, type TodayCard } from "./PlanRunTabs";
+import { InteractiveRoute } from "./InteractiveRoute";
 import { AreaFolds, CatchUpCard, FocusCard, foldItemOf, ReviewIntervals, UpcomingCard, type FoldItem, type LateArea } from "./PlanRunGeneral";
 import { SectionHeading } from "./planKit";
 import { DAY_LONG, openAgendaAt, type Loaded } from "./planShared";
-import { hasBasesRoute as planHasBasesRoute, RUN_TAB_GENERAL, RUN_TAB_RECORDS, runAreaTab, runTabKey } from "./mentorNav";
+import { hasBasesRoute as planHasBasesRoute, RUN_TAB_GENERAL, RUN_TAB_RECORDS, runAreaTab, runAreaInteractiveTab, runAreaInformativeTab, runTabKey } from "./mentorNav";
 import { PlanRecords } from "./PlanRecords";
 
 import { VaultSyncBanner } from "./VaultSyncBanner";
@@ -141,6 +142,7 @@ export function PlanRun({ data, plan }: { data: Loaded; plan: MentorPlan }) {
     const time = timeTagOf(times.get(i.folder), state === "completo", date, started);
     return {
       ...(time ? { time } : {}),
+      agendaDate: date,
       ...(sub ? { sub } : {}),
       ...(i.extra ? { extra: { remove: () => void removeExtraTopic(plan.id, rowDate, i.folder, () => undefined) } } : {}),
       minutes: i.minutes,
@@ -151,10 +153,11 @@ export function PlanRun({ data, plan }: { data: Loaded; plan: MentorPlan }) {
       state,
       done: state === "completo",
       exercises: 0,
+      ...(data.practiceOutdated?.[i.folder] ? { outdated: true } : {}),
       pct: topicByFolder.get(i.folder)?.pct ?? 0,
       unlockOn: gate.locked.get(i.folder),
     };
-  }, [topicByFolder, times, date, started, currentWeek, gate, plan.id]);
+  }, [topicByFolder, times, date, started, currentWeek, gate, plan.id, data.practiceOutdated]);
   const kindText = (k: Set<string>): string => (k.has("theory") && k.has("practice") ? "Teoría + Práctica" : k.has("practice") ? "Práctica" : k.has("theory") ? "Teoría" : "");
   /** Las tarjetas de área de un día (sin fundamentos); `planned` = proyección (sin bloqueo de la ruta sólida). */
   const cardsOf = useCallback((ents: DayAreaEntry[], planned = false): TodayCard[] =>
@@ -189,8 +192,8 @@ export function PlanRun({ data, plan }: { data: Loaded; plan: MentorPlan }) {
     const state = topicByFolder.get(t.folder)?.state ?? "sin_tratar";
     const isDone = state === "completo" || !!t.completedAt;
     const time = timeTagOf(times.get(t.folder), isDone, date, started);
-    return { ...(time ? { time } : {}), folder: t.folder, title: t.title, week: t.targetWeek, state, done: isDone, exercises: topicByFolder.get(t.folder)?.exercises ?? 0, pct: topicByFolder.get(t.folder)?.pct ?? 0, unlockOn: gate.locked.get(t.folder) };
-  }, [topicByFolder, times, date, started, gate]);
+    return { ...(time ? { time } : {}), agendaDate: date, folder: t.folder, title: t.title, week: t.targetWeek, state, done: isDone, exercises: topicByFolder.get(t.folder)?.exercises ?? 0, pct: topicByFolder.get(t.folder)?.pct ?? 0, unlockOn: gate.locked.get(t.folder), ...(data.practiceOutdated?.[t.folder] ? { outdated: true } : {}) };
+  }, [topicByFolder, times, date, started, gate, data.practiceOutdated]);
   // la ruta de un área: su pertenencia sale de `areaRouteTopics` (sin fundamentos), igual que los totales de la Agenda
   const routeOf = useCallback((subplanId: string): BoardRow[] => areaRouteTopics(plan, subplanId).map(routeRowOf), [plan, routeRowOf]);
   // Repaso espaciado (el mismo calendario del módulo de estudio): los repasos de cada área, unidos con los temas del plan
@@ -268,9 +271,9 @@ export function PlanRun({ data, plan }: { data: Loaded; plan: MentorPlan }) {
   const upCards = useMemo(() => (upDay ? cardsOf(dayByArea(plan, upDay, m.dueByDate.get(upDay.date) ?? []), true) : []), [upDay, plan, m.dueByDate, cardsOf]);
   // la vista de la Ejecución la elige la barra lateral (ítems de `ejecucionLinks`) y se recuerda por plan
   const [tabSel, setTabSel] = usePersistedNav<string>(runTabKey(plan.id), RUN_TAB_GENERAL);
-  const tab = tabSel === RUN_TAB_GENERAL || tabSel === RUN_TAB_RECORDS || tabSel === "proyectos" || (tabSel === "bases" && (basesRows.length > 0 || hasBasesRoute)) || areaList.some((a) => runAreaTab(a.subplanId) === tabSel) ? tabSel : RUN_TAB_GENERAL;
+  const tab = tabSel === RUN_TAB_GENERAL || tabSel === RUN_TAB_RECORDS || tabSel === "proyectos" || (tabSel === "bases" && (basesRows.length > 0 || hasBasesRoute)) || areaList.some((a) => [runAreaTab(a.subplanId), runAreaInteractiveTab(a.subplanId), runAreaInformativeTab(a.subplanId)].includes(tabSel)) ? tabSel : RUN_TAB_GENERAL;
   const go = (id: string): void => setTabSel(id);
-  const areaTab = tab.startsWith("area:") ? areaList.find((a) => runAreaTab(a.subplanId) === tab) : undefined;
+  const areaTab = tab.startsWith("area:") ? areaList.find((a) => [runAreaTab(a.subplanId), runAreaInteractiveTab(a.subplanId), runAreaInformativeTab(a.subplanId)].includes(tab)) : undefined;
   // lo pesado de cada vista se calcula solo cuando esa vista está abierta (y no al cambiar de pestaña o de modo)
   const areaView = useMemo(() => {
     if (!areaTab) return undefined;
@@ -529,7 +532,9 @@ export function PlanRun({ data, plan }: { data: Loaded; plan: MentorPlan }) {
         </div>
       )}
 
-      {areaTab && areaView && (
+      {areaTab && areaView && tab === runAreaInteractiveTab(areaTab.subplanId) && <InteractiveRoute area={areaTab.area} rows={areaView.routeRows} onInformative={() => go(runAreaInformativeTab(areaTab.subplanId))} />}
+
+      {areaTab && areaView && tab !== runAreaInteractiveTab(areaTab.subplanId) && (
         <RunArea
           plan={plan}
           area={areaTab}

@@ -18,18 +18,18 @@ import { SettingsDialog } from "./components/settings/SettingsDialog";
 import { PomodoroTicker } from "./components/mentor/AreaSession";
 import { PomodoroAssessmentModal } from "./components/mentor/PomodoroAssessmentModal";
 import { AiSettingsDialog } from "./components/notes/AssistantPanel";
-import { NotesModule } from "./components/notes/NotesModule";
 import { QuickSwitcher } from "./components/notes/QuickSwitcher";
 import { CommandPalette, openDailyNote, ShortcutsDialog, useShortcutsDialog } from "./components/notes/CommandPalette";
 import { useTasks } from "./store/tasks";
 import { useCanvas } from "./store/canvas";
 import type { ModuleId } from "./store/app";
 
-// Every module but Notas loads on first use: startup parses less code.
+// Modules load on first use: startup parses less code.
 function lazyModule(load: () => Promise<Record<string, unknown>>, name: string) {
   return lazy(async () => ({ default: (await load())[name] as ComponentType }));
 }
 const MODULES: Partial<Record<ModuleId, ComponentType>> = {
+  notas: lazyModule(() => import("./components/notes/NotesModule"), "NotesModule"),
   home: lazyModule(() => import("./components/home/HomeModule"), "HomeModule"),
   tareas: lazyModule(() => import("./components/tasks/TasksModule"), "TasksModule"),
   habits: lazyModule(() => import("./components/habits/HabitsModule"), "HabitsModule"),
@@ -48,7 +48,6 @@ const MODULES: Partial<Record<ModuleId, ComponentType>> = {
 const renderModule = (id: ModuleId) => <ModuleView module={id} />;
 
 function ModuleView({ module }: { module: ModuleId }) {
-  if (module === "notas") return <NotesModule />;
   const View = MODULES[module];
   if (!View) return <ComingSoon module={module} />;
   return (
@@ -251,7 +250,7 @@ function useVaultContentListener(): void {
   useEffect(() => {
     return api.onVaultContentChanged(() => {
       // import dinámico: estos almacenes viven en módulos pesados que no deben entrar en el arranque
-      void import("./components/study/StudyPanel").then((m) => m.useStudyVersion.getState().bump());
+      void import("./store/studyVersion").then((m) => m.useStudyVersion.getState().bump());
       void import("./store/mentor").then((m) => m.useMentor.setState((st) => ({ planVersion: st.planVersion + 1 })));
       void import("./store/curriculum").then((m) => {
         if (m.useCurriculum.getState().loaded) void m.useCurriculum.getState().refresh();

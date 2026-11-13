@@ -44,6 +44,15 @@ hljs.registerAliases(["md"], { languageName: "markdown" });
 
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp|svg)$/i;
 
+/** Syntax-highlight a code buffer with the same language registry used by Markdown fences. */
+export function highlightCode(source: string, language: string): string {
+  const lang = String(language || "").toLowerCase();
+  const aliases: Record<string, string> = { py: "python", js: "javascript", jsx: "javascript", ts: "typescript", tsx: "typescript", postgres: "sql", postgresql: "sql", mysql: "sql", node: "javascript" };
+  const normalized = aliases[lang] || lang;
+  if (!normalized || !hljs.getLanguage(normalized)) return escapeHtml(source);
+  return hljs.highlight(source, { language: normalized, ignoreIllegals: true }).value;
+}
+
 export function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")

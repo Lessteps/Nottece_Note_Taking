@@ -239,6 +239,17 @@ Contenido`;
     expect(p3.examScore).toBe(92);
   });
 
+  it("cuenta ejercicios aprobados distintos en el plan, sin duplicar reintentos", () => {
+    const topic: TopicManifest = { type: "topic", subject: "programming", title: "Variables", skills: ["implement", "trace", "pg_true_false"], mastery: { min_per_skill: 6, target_difficulty: 3, exam: "required" }, plan: { implement: [4, 4, 4], trace: [4, 4, 4], pg_true_false: [4, 4, 4] } };
+    const exercise = { path: "one.md", rel: "one.md", note_id: "one", title: "One", subject: "programming", discipline: "python", skill: "implement", mode: "implement", difficulty: 1, concept: "", chapter: "", chapter_title: "", integration: false } as ExerciseRef;
+    const attempt = { verdict: "correct", score: 100, counted: true };
+    const progress = computeTopicProgress(topic, [exercise], { one: { attempts: [attempt, attempt] } });
+    expect(progress.completenessPct).toBe(3); // 1 de 36, no dos reintentos
+    expect(progress.skills.implement!.cells[1].passes).toBe(1);
+    expect(progress.skills.implement!.cells[1].attempts).toBe(2);
+    expect(progress.isComplete).toBe(false);
+  });
+
   it("widens math skills when manifest declares only a subset", () => {
     const raw = `---
 type: topic

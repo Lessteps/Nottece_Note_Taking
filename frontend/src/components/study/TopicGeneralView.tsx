@@ -22,7 +22,7 @@ import {
   Target,
   Zap,
 } from "lucide-react";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import type { StudySnapshot, TopicData } from "../../lib/types";
 import { Donut } from "../common/charts";
 import { cn } from "../ui";
@@ -52,6 +52,9 @@ const SKILL_ICONS: Record<string, typeof Sigma> = {
 export function TopicGeneralView({ topicData, snap, onOpenConfigurator, onPractice }: TopicGeneralViewProps) {
   const [showExamModal, setShowExamModal] = useState(false);
   const [showIntervals, setShowIntervals] = useState(false);
+  const [expandedSkill, setExpandedSkill] = useState<string | null>(null);
+  const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
+  const [helpers, setHelpers] = useState<Record<string, boolean>>({});
   const manifest = topicData.topic;
   const progress = topicData.progress;
 
@@ -74,9 +77,6 @@ export function TopicGeneralView({ topicData, snap, onOpenConfigurator, onPracti
     .filter((s): s is NonNullable<typeof s> => s !== undefined);
   const notStarted = skillsList.filter((s) => s.status === "not_started");
   const isEnglishTopic = manifest.skills.some((s) => /^(gr|wr|rd|ls|sp|vc)_/.test(s));
-  const mastered = skillsList.filter((s) => s.mastered).length;
-  const practicing = skillsList.filter((s) => s.status === "practicing").length;
-  const pending = Math.max(0, skillsList.length - mastered - practicing);
 
   const examRequired = manifest.mastery.exam === "required";
   const target = manifest.mastery.target_difficulty;
@@ -94,9 +94,8 @@ export function TopicGeneralView({ topicData, snap, onOpenConfigurator, onPracti
               thickness={12}
               label={`${pct}%`}
               parts={[
-                { value: mastered, colour: "var(--nv-mint)", name: `Dominadas: ${mastered}` },
-                { value: practicing, colour: "var(--nv-accent)", name: `En práctica: ${practicing}` },
-                { value: pending, colour: "var(--nv-line-strong)", name: `Sin empezar: ${pending}` },
+                { value: pct, colour: "var(--nv-accent)", name: `Avance: ${pct}%` },
+                { value: 100 - pct, colour: "var(--nv-line-strong)", name: `Pendiente: ${100 - pct}%` },
               ]}
             />
             <div className="min-w-0">
@@ -106,7 +105,7 @@ export function TopicGeneralView({ topicData, snap, onOpenConfigurator, onPracti
               <h2 className="mt-0.5 text-[17px] font-bold leading-tight text-text">Dominio del Tema</h2>
               <p className="mt-1.5 max-w-[300px] text-[11.5px] leading-snug text-faint">
                 {manifest.plan
-                  ? `Completa las casillas de las ${skillsList.length} competencias que la IA eligió para este tema.`
+                  ? `Avance según los ejercicios distintos aprobados en las ${skillsList.length} competencias del plan. El examen se registra aparte.`
                   : `Completá las ${skillsList.length} habilidades en dificultad ${target === 3 ? "media y alta" : "media"} para desbloquear la certificación.`}
               </p>
             </div>
@@ -193,7 +192,8 @@ export function TopicGeneralView({ topicData, snap, onOpenConfigurator, onPracti
       <section>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-[13px] font-bold uppercase tracking-wide text-text">Matriz de competencias</h3>
+            <span aria-hidden="true" className="grid h-8 w-8 place-items-center rounded-lg border border-line bg-panel text-accent-text"><ListChecks size={16} /></span>
+            <h3 className="text-[18px] font-semibold tracking-tight text-text">Matriz de Competencias</h3>
             <span className="rounded border border-line bg-panel px-1.5 py-0.5 font-mono text-[9.5px] text-faint">
               SKILL × DIFICULTAD
             </span>
@@ -217,19 +217,19 @@ export function TopicGeneralView({ topicData, snap, onOpenConfigurator, onPracti
             )}
           </div>
         </div>
-        <p className="mt-1 text-[11px] text-faint">
-          Evolución pedagógica en {skillsList.length} dimensiones de aprendizaje.
+        <p className="mt-1 text-[12px] leading-5 text-faint">
+          Evolución pedagógica en {skillsList.length} dimensiones de aprendizaje práctico.
         </p>
 
-        <div className="mt-2.5 overflow-hidden rounded-2xl border border-line-strong bg-card">
-          <table className="w-full border-collapse text-left">
+        <div className="mt-4 overflow-x-auto rounded-xl border border-line bg-card shadow-sm">
+          <table className="w-full min-w-[820px] border-collapse text-left">
             <thead>
-              <tr className="border-b border-line bg-panel/60 font-mono text-[9.5px] uppercase tracking-wider text-faint">
-                <th className="py-2.5 pl-4 pr-3 font-semibold">Habilidad pedagógica</th>
-                <th className="px-2 py-2.5 text-center font-semibold text-warn">★ Fácil</th>
-                <th className="px-2 py-2.5 text-center font-semibold text-warn">★★ Med</th>
-                <th className="px-2 py-2.5 text-center font-semibold text-warn">★★★ Dif</th>
-                <th className="py-2.5 pl-2 pr-4 text-right font-semibold">Estado &amp; acción</th>
+              <tr className="border-b border-line bg-panel/60 font-mono text-[10px] uppercase tracking-wider text-faint">
+                <th className="py-3 pl-6 pr-3 font-semibold text-text">Habilidad Pedagógica</th>
+                <th className="px-2 py-3 text-center font-semibold text-warn">★ Fácil</th>
+                <th className="px-2 py-3 text-center font-semibold">•• Med</th>
+                <th className="px-2 py-3 text-center font-semibold">••• Dif</th>
+                <th className="py-3 pl-2 pr-6 text-right font-semibold">Estado &amp; acción</th>
               </tr>
             </thead>
             <tbody>
@@ -243,14 +243,14 @@ export function TopicGeneralView({ topicData, snap, onOpenConfigurator, onPracti
                       ? "En práctica"
                       : "Pendiente";
                 return (
-                  <tr key={sp.skill} className="border-b border-line/60 last:border-none hover:bg-hover/40">
-                    <td className="py-2.5 pl-4 pr-3">
+                  <Fragment key={sp.skill}><tr className={cn("group border-b border-line/60 last:border-none transition-colors hover:bg-hover/50", expandedSkill === sp.skill && "bg-panel/40")}>
+                    <td className="py-4 pl-6 pr-3">
                       <div className="flex items-start gap-2.5">
-                        <span className="mt-0.5 grid h-6 w-6 flex-none place-items-center rounded-md border border-line bg-panel text-accent-text">
+                        <span className={cn("mt-0.5 grid h-7 w-7 flex-none place-items-center rounded-md border text-accent-text transition-colors", expandedSkill === sp.skill ? "border-accent/30 bg-accent/10" : "border-line bg-panel group-hover:border-accent/30")}>
                           <Icon size={13} />
                         </span>
                         <div className="min-w-0">
-                          <div className="text-[12.5px] font-semibold text-text">{sp.label}</div>
+                          <button type="button" aria-expanded={expandedSkill === sp.skill} onClick={() => setExpandedSkill(expandedSkill === sp.skill ? null : sp.skill)} className="text-left text-[12.5px] font-semibold text-text hover:text-accent-text">{expandedSkill === sp.skill ? "▾" : "▸"} {sp.label}</button>
                           {/* Obligatoria: una fila sin descripción es un bug. */}
                           <div className="mt-0.5 max-w-[300px] text-[10.5px] leading-snug text-faint">
                             {sp.description}
@@ -306,7 +306,7 @@ export function TopicGeneralView({ topicData, snap, onOpenConfigurator, onPracti
                         </span>
                         <button
                           type="button"
-                          onClick={() => onOpenConfigurator(sp.skill)}
+                          onClick={() => setExpandedSkill(expandedSkill === sp.skill ? null : sp.skill)}
                           className="flex items-center gap-1 rounded-lg bg-accent px-2.5 py-1 text-[11px] font-semibold text-white transition-colors hover:bg-accent-strong"
                         >
                           Practicar
@@ -314,7 +314,18 @@ export function TopicGeneralView({ topicData, snap, onOpenConfigurator, onPracti
                         </button>
                       </div>
                     </td>
-                  </tr>
+                  </tr>{expandedSkill === sp.skill && <tr><td colSpan={5} className="border-l-4 border-accent bg-panel/40 px-6 py-5"><div className="space-y-5">{([1, 2, 3] as const).map((difficulty) => {
+                    const exercises = (topicData.exercises ?? []).filter((e) => (e.mode_id === sp.skill || e.skill_id === sp.skill) && e.difficulty === difficulty);
+                    return <div key={difficulty} className="space-y-2"><div className="flex items-center gap-2 border-b border-line/70 pb-2"><span className="font-mono text-[10px] uppercase tracking-wider text-faint">{["", "Fácil", "Media", "Difícil"][difficulty]}</span><span className="rounded-full border border-line bg-card px-2 py-0.5 font-mono text-[10px] text-dim">{exercises.length} ejercicios</span></div>{exercises.length ? <div className="flex flex-col gap-2.5">{exercises.map((e) => {
+                      const history = e.history ?? [];
+                      const selected = selectedExercise === e.path;
+                      const date = (s?: string) => s ? new Date(s).toLocaleString("es", { dateStyle: "medium", timeStyle: "short" }) : "Sin registro";
+                      return <article key={e.path} className="rounded-lg border border-line bg-card p-4 transition-all hover:border-accent/40 hover:shadow-sm">
+                        <div className="flex flex-wrap items-center gap-3"><button type="button" aria-expanded={selected} onClick={() => setSelectedExercise(selected ? null : e.path)} className="min-w-0 flex-1 text-left text-sm font-semibold text-text hover:text-accent-text">{selected ? "▾" : "▸"} {e.title}</button><span className={cn("rounded-full px-2 py-1 text-xs", e.completed ? "bg-mint-soft text-mint" : "bg-hover text-dim")}>{e.completed ? "Aprobado" : history.length ? "En práctica" : "Sin iniciar"}</span><label className="flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-xs text-dim hover:bg-hover"><input aria-label={`Activar Helper para ${e.title}`} className="accent-accent" type="checkbox" checked={!!helpers[e.path]} onChange={(event) => setHelpers({ ...helpers, [e.path]: event.target.checked })} /> Helper</label><button type="button" onClick={() => { sessionStorage.setItem(`nv.practice.helper:${e.path}`, helpers[e.path] ? "1" : "0"); onPractice(e.path); }} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-accent-strong"><span>Practicar</span><Play size={12} /></button></div>
+                        {selected && <div className="mt-3 space-y-3 border-t border-line pt-3"><div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-dim"><span>Intentos: {history.length}</span><span>Primer intento registrado: {date(history[0]?.at)}</span><span>Último intento: {date(history.at(-1)?.at)}</span><span>Primera aprobación: {date(history.find((a) => a.verdict !== "ungraded" && !a.solution_seen && (a.score ?? 0) >= 75)?.at)}</span></div>{history.length ? [...history].reverse().map((a, i) => <details key={i} className="rounded-lg border border-line bg-panel p-2.5 text-xs"><summary className="cursor-pointer font-semibold text-text">Intento {history.length - i} · {date(a.at)} · {a.verdict === "ungraded" ? "Sin calificar" : `${a.score ?? 0}/100`}</summary>{a.feedback && <p className="mt-2 text-dim">{a.feedback}</p>}{a.answer && <pre className="mt-2 max-h-60 overflow-auto whitespace-pre-wrap rounded bg-surface p-2 text-text">{a.answer}</pre>}{(a.errors ?? []).map((error, n) => <div key={n} className="mt-2 rounded border border-danger/30 p-2 text-dim"><strong className="text-danger">{error.category || "Error"}</strong> {error.description}{error.evidence && <p>Evidencia: {error.evidence}</p>}{error.fix && <p>Corrección: {error.fix}</p>}</div>)}</details>) : <p className="text-xs text-faint">Todavía no hay intentos registrados.</p>}<p className="text-xs text-faint">Las fechas corresponden a entregas registradas; no se guardaba la hora de inicio.</p></div>}
+                      </article>;
+                    })}</div> : <p className="text-xs text-faint">Sin ejercicios generados.</p>}</div>;
+                  })}<button type="button" onClick={() => onOpenConfigurator(sp.skill)} className="rounded border border-line px-2 py-1 text-xs text-accent-text">Configurar ayuda y práctica</button></div></td></tr>}</Fragment>
                 );
               })}
             </tbody>

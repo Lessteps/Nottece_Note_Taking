@@ -6,7 +6,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { contractProblems, evaluateTopicDesign, gapsLine, readTheory, requiredDifficulties, summarizeDesign } from "../../lib/topicDesign.js";
-import { scanTopicDesigns } from "./topicDesignScan.js";
+import { diskExercises, scanTopicDesigns } from "./topicDesignScan.js";
+import { scanVault } from "../practice/exerciseIndex.js";
 
 import { PRACTICA, THEORY } from "./designFixtures.js";
 const EXERCISE = (skill: string, difficulty: number) => ({ path: "", rel: "", skill, mode: skill, difficulty });
@@ -87,11 +88,23 @@ describe("evaluateTopicDesign / scanTopicDesigns en un vault temporal", () => {
     put(`${f}/4.6 C.practica.md`, PRACTICA(["design", "implement"], "procedural", 'plan: "design=0/2/1, implement=2/0/0"\n'));
     const ex = [EXERCISE("design", 3), EXERCISE("implement", 1), EXERCISE("implement", 2)].map((e) => ({ ...e, rel: `${f}/Ejercicios/${e.skill}/x.md` }));
     const d = scanTopicDesigns([{ folder: f, title: "C", subject: "programming" }], { root: dir, exercises: ex }).get(f)!;
-    expect(d.gaps.map((g) => g.text)).toEqual(["Sin práctica en la skill `design` a dificultad 2"]);
+    expect(d.gaps.map((g) => g.text)).toEqual(["Práctica en la skill `design` a dificultad 2: 0 de 2 ejercicios", "Práctica en la skill `implement` a dificultad 1: 1 de 2 ejercicios"]);
     expect(d.gaps[0]).toMatchObject({ level: "recommended", skill: "design", difficulty: 2, fix: "practice" });
     expect(d.complete).toBe(true); // lo obligatorio está; la escalera solo es recomendada
     expect(requiredDifficulties("debug", { skills: ["debug"], targetDifficulty: 3 })).toEqual([2, 3]);
     expect(requiredDifficulties("implement", { skills: ["implement"], targetDifficulty: 2 })).toEqual([1, 2]);
+  });
+
+  it("conserva las notas archivadas sin incluirlas en los ejercicios activos", () => {
+    const f = `${BASE}/4.6 C`;
+    const active = `${f}/Ejercicios/implement/active.md`;
+    const archived = `${f}/Ejercicios/implement/old.md`;
+    put(active, "---\ntype: exercise\nmode: implement\ndifficulty: 1\n---\n# Activo");
+    put(archived, "---\ntype: exercise\nmode: implement\ndifficulty: 1\narchived: true\n---\n# Histórico");
+    expect(diskExercises(dir, f).map((e) => e.rel)).toEqual([active]);
+    const scan = scanVault(dir, [path.join(dir, active), path.join(dir, archived)]);
+    expect(scan.exercises.map((e) => e.rel)).toEqual([active]);
+    expect(fs.existsSync(path.join(dir, archived))).toBe(true);
   });
 
   it("skills que no encajan con el tipo: un tema teórico con implement y un procedimental solo con conceptos", () => {

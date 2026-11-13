@@ -16,7 +16,7 @@ import { createAreaPracticeFolders } from "../../core/mentor/areaPracticeFolders
 import { kataBlockMessages, mergeAiKata, parseKataBlock } from "../../core/mentor/areaKatasAi.js";
 import type { ExecDeps, TaskRunResult } from "../../core/mentor/planExecutor.js";
 import { ppAreaDir } from "../../core/mentor/practiceState.js";
-import { diskExercises, scanTopicDesigns } from "../../core/mentor/topicDesignScan.js";
+import { diskExercises, readRawManifest, scanTopicDesigns } from "../../core/mentor/topicDesignScan.js";
 import { ensureTopicViewFiles } from "../../core/practice/viewFiles.js";
 import { safeName } from "../../core/assistantActions.js";
 import { PlanStore } from "../../core/mentor/plan.js";
@@ -199,12 +199,13 @@ export function makeExecDeps(app: AppState, planId: string, o: ExecDepsOptions =
     const cells = practiceCells(design(), includeRecommended);
     if (!cells.length) return { created: [], note: "No faltan ejercicios." };
     const before = snapshot(abs);
+    const manifest = readRawManifest(path.join(abs, `${path.basename(abs)}.practica.md`));
     const created: string[] = [];
     const warnings: string[] = [];
     for (const c of cells) {
       if (ctx.signal.aborted) throw abortError();
       ctx.say(`Ejercicios de ${c.skill} (dificultad ${c.difficulty})…`);
-      const r = await withAiSignal(ctx.signal, () => study.study_topic_session_build(folder, c.skill, c.difficulty, "3-5", "no_help"));
+      const r = await withAiSignal(ctx.signal, () => study.study_topic_session_build(folder, c.skill, c.difficulty, (manifest?.plan?.[c.skill]?.[c.difficulty - 1] ?? 0) > 0 ? "ai" : "3-5", "no_help", true));
       caches();
       for (const e of r.exercises) if (e.is_new) created.push(e.path.replace(/\\/g, "/"));
       if (r.generated_count === 0 && r.existing_count === 0) warnings.push(`La IA no devolvió ejercicios válidos para ${c.skill} (dificultad ${c.difficulty}).`);

@@ -2,6 +2,7 @@
 
 import { ChevronRight, MoreHorizontal } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "../ui";
 
 export interface MenuAction {
@@ -20,13 +21,15 @@ export function RowMenu({ title, items, disabled, trigger, className }: { title:
   const [open, setOpen] = useState(false);
   const [activeSub, setActiveSub] = useState<string | null>(null);
   const box = useRef<HTMLSpanElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ left: 8, top: 8 });
   useEffect(() => {
     if (!open) {
       setActiveSub(null);
       return;
     }
     const away = (e: MouseEvent): void => {
-      if (box.current && !box.current.contains(e.target as Node)) {
+      if (box.current && !box.current.contains(e.target as Node) && !menu.current?.contains(e.target as Node)) {
         setOpen(false);
         setActiveSub(null);
       }
@@ -39,9 +42,17 @@ export function RowMenu({ title, items, disabled, trigger, className }: { title:
     };
     document.addEventListener("mousedown", away);
     document.addEventListener("keydown", esc);
+    const reposition = (e: Event): void => {
+      if (e.target instanceof Node && menu.current?.contains(e.target)) return;
+      setOpen(false);
+    };
+    window.addEventListener("resize", reposition);
+    document.addEventListener("scroll", reposition, true);
     return () => {
       document.removeEventListener("mousedown", away);
       document.removeEventListener("keydown", esc);
+      window.removeEventListener("resize", reposition);
+      document.removeEventListener("scroll", reposition, true);
     };
   }, [open]);
   const item = "flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[14px] hover:bg-hover transition-colors";
@@ -53,15 +64,20 @@ export function RowMenu({ title, items, disabled, trigger, className }: { title:
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={trigger ? `Abrir ${title}` : `Opciones de ${title}`}
-        onClick={() => setOpen((v) => !v)}
+        onClick={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          const width = Math.min(256, window.innerWidth - 16);
+          setPosition({ left: Math.max(8, Math.min(trigger ? rect.left : rect.right - width, window.innerWidth - width - 8)), top: Math.max(8, Math.min(rect.bottom + 4, window.innerHeight - 280)) });
+          setOpen((v) => !v);
+        }}
         className={trigger ? cn("block max-w-full text-left", className) : "grid h-8 w-8 place-items-center rounded-lg text-faint transition-colors hover:bg-hover hover:text-text disabled:cursor-not-allowed disabled:opacity-40"}
         data-testid={trigger ? "board-topic-trigger" : "board-arrow"}
         title={trigger ? undefined : "Opciones"}
       >
         {trigger ?? <MoreHorizontal size={16} aria-hidden />}
       </button>
-      {open && (
-        <div role="menu" aria-label={`Abrir ${title}`} className={cn("absolute top-full z-30 mt-1 w-64 rounded-xl border border-line bg-card p-1.5 shadow-xl", trigger ? "left-0" : "right-0")} data-testid="board-menu">
+      {open && createPortal(
+        <div ref={menu} role="menu" aria-label={`Abrir ${title}`} style={{ position: "fixed", left: position.left, top: position.top, width: "min(256px, calc(100vw - 16px))", maxHeight: "calc(100vh - 16px)", overflowY: "auto" }} className="z-[100] rounded-xl border border-line bg-card p-1.5 shadow-xl" data-testid="board-menu">
           {items.map((it) => {
             if (it.children && it.children.length > 0) {
               return (
@@ -95,12 +111,7 @@ export function RowMenu({ title, items, disabled, trigger, className }: { title:
                     <div
                       role="menu"
                       aria-label={it.label}
-                      className={cn(
-                        "z-40 rounded-xl border border-line bg-card p-1.5 shadow-xl",
-                        trigger
-                          ? "absolute left-full top-0 ml-1.5 w-64"
-                          : "absolute right-full top-0 mr-1.5 w-64"
-                      )}
+                      className="ml-3 rounded-lg border border-line bg-card p-1"
                       data-testid="board-menu-sub"
                     >
                       {it.children.map((sub) => (
@@ -142,7 +153,7 @@ export function RowMenu({ title, items, disabled, trigger, className }: { title:
             );
           })}
         </div>
-      )}
+      , document.body)}
     </span>
   );
 }

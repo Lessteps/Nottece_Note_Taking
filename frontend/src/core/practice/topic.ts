@@ -8,7 +8,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseFrontmatter } from "../frontmatter";
 import type { ExerciseRef } from "./exerciseIndex";
-import { attemptPassed } from "./ledger";
+import { attemptCounts, attemptPassed } from "./ledger";
 import {
   type DifficultyLevel,
   skillsForSubject,
@@ -487,12 +487,15 @@ export function computeTopicProgress(
       const exEntry = attempts[ex.note_id];
       const exAttempts = Array.isArray(exEntry) ? exEntry : exEntry?.attempts || [];
 
+      let passedThisExercise = false;
       for (const a of exAttempts) {
+        if (!attemptCounts(a)) continue;
         totalAttempts++;
         cell.attempts++;
 
         const passed = attemptPassed(a);
-        if (passed) {
+        if (passed && (!planned || !passedThisExercise)) {
+          passedThisExercise = true;
           totalPasses++;
           cell.passes++;
           if (diff > highestPassedDiff) {
@@ -565,7 +568,10 @@ export function computeTopicProgress(
   const totalUnits = totalSkills + examWeight;
   const completedUnits = masteredSkillsCount + (examRequired && examPassed ? 1 : 0);
 
-  const completenessPct = totalUnits > 0 ? Math.round((completedUnits / totalUnits) * 100) : 0;
+  const plannedCounts = topic.plan ? Object.values(skillsProgress).flatMap((skill) => ([1, 2, 3] as const).map((d) => skill.cells[d])) : [];
+  const plannedTotal = plannedCounts.reduce((n, cell) => n + (cell.required ?? 0), 0);
+  const plannedDone = plannedCounts.reduce((n, cell) => n + Math.min(cell.passes, cell.required ?? 0), 0);
+  const completenessPct = plannedTotal > 0 ? Math.round((plannedDone / plannedTotal) * 100) : totalUnits > 0 ? Math.round((completedUnits / totalUnits) * 100) : 0;
   const isComplete = masteredSkillsCount === totalSkills && (!examRequired || examPassed);
 
   return {

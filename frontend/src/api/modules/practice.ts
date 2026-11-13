@@ -17,6 +17,7 @@ import { runLanguageFor } from "../../core/codeDebugger.js";
 import { ApiError } from "../../core/errors.js";
 import { parseFrontmatter } from "../../core/frontmatter.js";
 import { PracticeAttemptStore } from "../../core/practice/attempts.js";
+import { writePracticeSubmission } from "../../core/practice/submissionFiles.js";
 import { disciplineFor, skillOf } from "../../core/practice/disciplineCatalog.js";
 import { DRILL_KINDS, type DrillItem, check as checkDrill, generate as generateDrill, summarize as summarizeDrill } from "../../core/practice/drills.js";
 import { applyResult, recentErrors } from "../../core/practice/errorLog.js";
@@ -172,6 +173,12 @@ function practiceApply(
     transport,
     result,
   });
+  let submissionPath: string | null = null;
+  let submissionError = "";
+  try {
+    const attempts = new PracticeAttemptStore(app.root).attempts(ex.note_id);
+    submissionPath = writePracticeSubmission(app.root, ex, app.rel(p), attempt, attempts.length);
+  } catch (e) { submissionError = (e as Error).message; }
   clearStudySnapshotCache();
   // The topic's review note follows every graded attempt, whatever the skill.
   try {
@@ -213,6 +220,8 @@ function practiceApply(
     result: resultDict(result),
     quality: attempt.quality ?? null,
     history,
+    ...(submissionPath ? { submissionPath } : {}),
+    ...(submissionError ? { submissionError } : {}),
   };
 }
 
@@ -246,6 +255,19 @@ export function practiceApi(app: AppState) {
   const aiCfg = (): AIConfig => AIConfig.fromDict(AppConfig.get_ai_config());
 
   return {
+    practice_pick_code_file() {
+      if (!app.window) throw new ApiError("Solo disponible en la app de escritorio.");
+      let chosen: string | null = null;
+      try {
+        const electron = require("electron") as { dialog?: { showOpenDialogSync(w: unknown, opts: Record<string, unknown>): string[] | undefined } };
+        const result = electron.dialog?.showOpenDialogSync(app.window, { properties: ["openFile"], filters: [{ name: "Archivos de código y texto", extensions: ["py","java","ts","tsx","js","jsx","mjs","c","h","cpp","cs","go","rs","sql","html","css","json","yaml","yml","md","txt","sh"] }] });
+        chosen = result?.[0] ?? null;
+      } catch { chosen = null; }
+      if (!chosen) return { ok: false };
+      const stat = fs.statSync(chosen);
+      if (stat.size > 1024 * 1024) throw new ApiError("El archivo supera el límite de 1 MB.");
+      return { ok: true, name: path.basename(chosen), text: fs.readFileSync(chosen, "utf8") };
+    },
     practice_load(rel: string) {
       const [p, ex] = getExercise(app, rel);
       const mode = MODES[ex.mode] || modeFor(ex.frontmatter);
@@ -296,10 +318,10 @@ export function practiceApi(app: AppState) {
         drill:
           mode.answer_kind === "drill"
             ? {
-                kind: ex.drill && ex.drill in DRILL_KINDS ? ex.drill : "arithmetic",
-                label: DRILL_KINDS[ex.drill] || "Aritmética",
-                items: ex.items,
-              }
+              kind: ex.drill && ex.drill in DRILL_KINDS ? ex.drill : "arithmetic",
+              label: DRILL_KINDS[ex.drill] || "Aritmética",
+              items: ex.items,
+            }
             : null,
         draft: data.draft,
         history: historyList(data.attempts),
@@ -319,6 +341,13 @@ export function practiceApi(app: AppState) {
         app.rel(p),
         String(text || "").slice(0, MAX_ANSWER),
       );
+      new PracticeAttemptStore(app.root).saveExerciseSnapshot(ex.note_id, app.rel(p), {
+        answer: String(text || "").slice(0, MAX_ANSWER),
+        difficulty: ex.difficulty,
+        language: ex.code_lang || ex.subject,
+        title: ex.title,
+        explanation: ex.statement,
+      });
       return { ok: true };
     },
 

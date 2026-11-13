@@ -8,6 +8,7 @@
 
 import { createContext, useContext, useEffect, useState, type ComponentType, type ReactNode } from "react";
 import { cn } from "./ui";
+import { ErrorBoundary } from "./common/ErrorBoundary";
 import type { ModuleId } from "../store/app";
 
 /**
@@ -48,7 +49,7 @@ export function ModuleHost({
             aria-hidden={!isActive}
             inert={!isActive}
           >
-            <ModuleVisible.Provider value={isActive}>{render(id)}</ModuleVisible.Provider>
+            <ModuleVisible.Provider value={isActive}><ErrorBoundary what={id === "mentor" ? "El Mentor" : "Esta sección"}>{render(id)}</ErrorBoundary></ModuleVisible.Provider>
           </div>
         );
       })}

@@ -11,7 +11,7 @@ import { liveDoneOf, scheduleOf } from "./agendaKit";
 import { useReviewItems } from "./AreaWork";
 import { MentorSidebar } from "./MentorSidebar";
 import {
-  activePlaneacionId, ejecucionLinks, modeSubject, PAGE_ADD_AREA, PLAN_NAV_PREFIX, RUN_NAV_PREFIX, RUN_TAB_GENERAL, runHints, runTabKey, selectEjecucion, selectPlaneacion, useMentorMode,
+  activePlaneacionId, ejecucionLinks, modeSubject, PAGE_ADD_AREA, PLAN_NAV_PREFIX, RUN_NAV_PREFIX, RUN_TAB_GENERAL, runHints, runTabKey, runAreaInteractiveTab, runAreaInformativeTab, selectEjecucion, selectPlaneacion, useMentorMode,
 } from "./mentorNav";
 import { ejecucionItems, planeacionItems } from "./mentorNavItems";
 import { DEFAULT_SECTION } from "./PlanSections";
@@ -56,7 +56,7 @@ export function PlanWorkspace({ planId }: { planId: string }) {
     ? ""
     : mode === "planeacion"
       ? activePlaneacionId(tab, section, agendaArea, plan.subplans.map((x) => x.id), !!plan.programmingPractice)
-      : `${RUN_NAV_PREFIX}${ejecucionLinks(plan, runOpts).some((l) => l.tab === runTab) ? runTab : RUN_TAB_GENERAL}`;
+      : `${RUN_NAV_PREFIX}${(ejecucionLinks(plan, runOpts).some((l) => l.tab === runTab) || plan.subplans.some((s) => runTab === runAreaInteractiveTab(s.id) || runTab === runAreaInformativeTab(s.id))) ? runTab : RUN_TAB_GENERAL}`;
   const onSelect = (id: string): void => {
     if (id === `${PLAN_NAV_PREFIX}${PAGE_ADD_AREA}`) {
       setAddAreaOpen(true);

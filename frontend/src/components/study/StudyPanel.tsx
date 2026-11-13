@@ -3,7 +3,6 @@
 
 import { Play, RefreshCw, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { create } from "zustand";
 import { api } from "../../lib/bridge";
 import { renderMarkdown } from "../../lib/markdown";
 import type { StudySnapshot, TopicData } from "../../lib/types";
@@ -27,8 +26,8 @@ const KIND: Record<string, [string, string]> = {
 const STATUS_DOT: Record<string, string> = { consolidated: "bg-mint", practicing: "bg-warn", not_started: "border border-faint" };
 const GRADES: Array<[string, number, string]> = [["Otra vez", 1, "text-danger"], ["Difícil", 3, "text-warn"], ["Bien", 4, "text-mint"], ["Fácil", 5, "text-accent-text"]];
 
-/** Bumped when an attempt is recorded, so the panel re-reads its area. */
-export const useStudyVersion = create<{ v: number; bump: () => void }>((set) => ({ v: 0, bump: () => set((s) => ({ v: s.v + 1 })) }));
+import { useStudyVersion } from "../../store/studyVersion";
+export { useStudyVersion };
 
 const inline = (t: string) => ({ __html: renderMarkdown(t) });
 

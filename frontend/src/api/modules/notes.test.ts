@@ -72,6 +72,20 @@ describe("notesApi", () => {
     expect(paths.has("Programación/script.py")).toBe(true);
   });
 
+  it("archiva solo mapas alternativos que tienen un mapa principal", () => {
+    const main = path.join(dir, "Programación", "Tema — mapa.canvas");
+    const alt = path.join(dir, "Programación", "Tema — mapa.nuevo.canvas");
+    const orphan = path.join(dir, "Programación", "Único — mapa.nuevo.canvas");
+    fs.writeFileSync(main, "principal"); fs.writeFileSync(alt, "versión anterior"); fs.writeFileSync(orphan, "único");
+    api.list_dir("Programación");
+    expect(fs.readFileSync(main, "utf8")).toBe("principal");
+    expect(fs.existsSync(alt)).toBe(false);
+    expect(fs.readFileSync(orphan, "utf8")).toBe("único");
+    const trash = path.join(dir, ".trash", "mapas");
+    const backups = fs.readdirSync(trash).map((d) => path.join(trash, d, "Programación", "Tema — mapa.nuevo.canvas"));
+    expect(backups.some((p) => fs.existsSync(p) && fs.readFileSync(p, "utf8") === "versión anterior")).toBe(true);
+  });
+
   it("read_note splits frontmatter and is json safe", () => {
     const note = api.read_note("Programación/Spec.md");
     expect(note.title).toBe("Spec");
