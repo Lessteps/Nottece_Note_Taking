@@ -183,15 +183,15 @@ describe("ítems de Ejecución", () => {
   it("Hoy, una por área (en el orden fijo de las áreas), Bases si el plan las tiene, Proyectos y Registros", () => {
     const plan = { subplans: [sub("s2", "Frontend", "frontend"), sub("s1", "Backend", "backend", true)] } as never;
     const l = ejecucionLinks(plan);
-    expect(l.map((x) => x.label)).toEqual(["Hoy", "Backend", "Frontend", "Bases", "Proyectos", "Registros"]);
-    expect(l.map((x) => x.tab)).toEqual(["general", "area:s1", "area:s2", "bases", "proyectos", "registros"]);
+    expect(l.map((x) => x.label)).toEqual(["Hoy", "Backend", "Frontend", "Bases", "Prácticas diarias", "Proyectos", "Registros"]);
+    expect(l.map((x) => x.tab)).toEqual(["general", "area:s1", "area:s2", "bases", "practicas-diarias", "proyectos", "registros"]);
     expect(l[1]!.id).toBe("ej:area:s1");
   });
 
   it("sin grupo de Bases en la ruta no hay «Bases»", () => {
     const plan = { subplans: [sub("s1", "Backend", "backend")] } as never;
     expect(hasBasesRoute(plan)).toBe(false);
-    expect(ejecucionLinks(plan).map((x) => x.label)).toEqual(["Hoy", "Backend", "Proyectos", "Registros"]);
+    expect(ejecucionLinks(plan).map((x) => x.label)).toEqual(["Hoy", "Backend", "Prácticas diarias", "Proyectos", "Registros"]);
   });
 });
 

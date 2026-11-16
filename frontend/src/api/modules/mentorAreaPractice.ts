@@ -19,7 +19,7 @@ import { AreaPracticeStore, deriveAreaPractice, existingAreaFiles } from "../../
 import { PLAN_ID_RE, PlanStore, type Plan } from "../../core/mentor/plan.js";
 import { ppAreaDir } from "../../core/mentor/practiceState.js";
 import { loadAllAttempts } from "../../core/practice/ledger.js";
-import { kataDatesOf } from "../../lib/areaPracticeDerive.js";
+import { kataDatesOf, verifiedKataFilesOf } from "../../lib/areaPracticeDerive.js";
 import { areaFolderOf, areaKataDates, areaPracticeFor, isPracticeAreaId, kataForDay, practiceAreasOf } from "../../lib/areaPracticeSystem.js";
 import type { AppState } from "../appState.js";
 
@@ -120,7 +120,7 @@ export function mentorAreaPracticeApi(app: AppState, hooks: { today: () => strin
           : undefined;
       // un kata PLANEADO más adelante (el estudiante lo adelantó): el kata nº N del área es el día N de sus fechas
       const later = (() => {
-        if (target || !wanted || wanted < hooks.today()) return undefined;
+        if (target || !wanted) return undefined;
         const day = areaKataDates(plan, areaId).indexOf(wanted) + 1;
         const k = day > 0 ? kataForDay(areaId, day, area.level) : null;
         return k ? { day, date: wanted, rel: `${areaFolderOf(areaId)}/katas/${k.file}` } : undefined;
@@ -140,14 +140,23 @@ export function mentorAreaPracticeApi(app: AppState, hooks: { today: () => strin
       const areaId = String(o.areaId ?? "");
       const date = String(o.date ?? "");
       if (!isPracticeAreaId(areaId) || !practiceAreasOf(plan).some((a) => a.areaId === areaId)) throw new ApiError("Esa área no está en el plan.");
-      if (!DATE_RE.test(date) || date > hooks.today()) throw new ApiError("Solo se pueden marcar katas de hoy o de días pasados.");
+      if (!DATE_RE.test(date)) throw new ApiError("Fecha inválida (AAAA-MM-DD).");
+      if (date > hooks.today() && !areaKataDates(plan, areaId).includes(date)) throw new ApiError("Ese reto no está en el plan.");
       const status = o.status === "done" || o.status === "skipped" ? o.status : o.status === null || o.status === undefined ? null : undefined;
       if (status === undefined) throw new ApiError("Estado inválido.");
       if (status === "done") {
-        const verified = kataDatesOf(loadAllAttempts(app.root), { id: areaId, folder: areaFolderOf(areaId) }).has(date);
-        if (!verified) {
+        const attempts = loadAllAttempts(app.root);
+        const area = { id: areaId, folder: areaFolderOf(areaId) };
+        const verifiedOnDate = kataDatesOf(attempts, area).has(date);
+        const index = areaKataDates(plan, areaId).indexOf(date) + 1;
+        const filePrefix = `${String(index).padStart(3, "0")} `;
+        const verifiedByFile = index > 0 && [...verifiedKataFilesOf(attempts, area)].some((file) => file.split("/").pop()?.startsWith(filePrefix));
+        if (!verifiedOnDate && !verifiedByFile) {
           throw new ApiError("Este kata aún no está verificado: hace falta un intento calificado (nota de 75 o más, sin ver la solución). Resuélvelo en su archivo y pide la revisión; cuando la corrección lo dé por bueno, queda hecho.");
         }
+        // La evidencia por archivo ya determina el avance: no dupliques el mismo intento
+        // guardando una segunda marca en la fecha prevista.
+        if (verifiedByFile && !verifiedOnDate) return viewOf(plan);
       } else if (status === "skipped") {
         const rule = viewOf(plan).areas.find((a) => a.areaId === areaId)?.kata.skip;
         if (rule && !rule.allowed) {

@@ -144,10 +144,10 @@ describe("TopicFileView", () => {
     mount();
     await settle();
 
-    expect(text()).toContain("Matriz de competencias");
+    expect(text().toLowerCase()).toContain("matriz de competencias");
     expect(text()).toContain("SKILL × DIFICULTAD");
-    expect(text()).toContain("Habilidad pedagógica");
-    for (const heading of ["★ Fácil", "★★ Med", "★★★ Dif"]) {
+    expect(text().toLowerCase()).toContain("habilidad pedagógica");
+    for (const heading of ["★ Fácil", "•• Med", "••• Dif"]) {
       expect(text(), `missing ${heading}`).toContain(heading);
     }
     for (const skill of MATHEMATICS_SKILLS) {
@@ -156,8 +156,8 @@ describe("TopicFileView", () => {
     }
     expect(text()).toContain("0 / 6");
     expect(text()).toContain("Pendiente");
-    // One action per row, inside the matrix (the header toggle is not one of them).
-    expect([...container.querySelectorAll("table button")].length).toBe(SKILL_IDS.length);
+    // Expand toggle + action button per row inside the matrix.
+    expect([...container.querySelectorAll("table button")].length).toBe(SKILL_IDS.length * 2);
   });
 
   it("opens the configurator on the competency of the row that was clicked", async () => {
@@ -171,6 +171,15 @@ describe("TopicFileView", () => {
       await Promise.resolve();
     });
     await settle();
+
+    const configure = [...container.querySelectorAll("button")].find((b) => b.textContent?.includes("Configurar ayuda"));
+    if (configure) {
+      await act(async () => {
+        configure.click();
+        await Promise.resolve();
+      });
+      await settle();
+    }
 
     expect(text()).toContain("Competencia a entrenar");
     const selected = [...container.querySelectorAll("button[aria-pressed=true]")].map((b) => b.textContent ?? "");

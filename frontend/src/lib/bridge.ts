@@ -21,6 +21,8 @@ declare global {
     pywebview?: { api: PyApi };
     nv?: {
       invoke: (method: string, args: unknown[]) => Promise<unknown>;
+      setInteractiveRouteActive?: (active: boolean) => void;
+      onInteractiveRouteZoom?: (cb: (action: "in" | "out") => void) => () => void;
       onOpenReview?: (cb: () => void) => () => void;
       onCaptureRequest?: (cb: () => void) => () => void;
       onCaptureDone?: (cb: (data: { rel: string; name: string }) => void) => () => void;
@@ -359,6 +361,7 @@ export const api = {
   mentorChatClear: () => call<import("./types").MentorChatState>("mentor_chat_clear"),
   mentorChat: (message: string, chatId?: string, mode?: "plan") => call<import("./types").MentorChatResult>("mentor_chat", { message, chatId, mode }),
   mentorPlanList: () => call<import("./types").MentorPlanListRow[]>("mentor_plan_list"),
+  mentorScopeReview: (opts: { planId: string; subplanId: string; groupId?: string; methodology?: string; planReview?: string }) => call<{ methodology?: string; updatedAt?: string; planReview?: string; planUpdatedAt?: string }>("mentor_scope_review", opts),
   mentorPlanGet: (id?: string) => call<import("./types").MentorPlanGet>("mentor_plan_get", { id }),
   mentorPlanOptions: () => call<import("./types").MentorPlanOptions>("mentor_plan_options"),
   mentorPlanGenerate: (preconditions: import("./planTime").PlanPreconditions) => call<import("./types").MentorPlanGenerateResult>("mentor_plan_generate", { preconditions }),
@@ -484,6 +487,8 @@ export const api = {
   mentorPlanProjectLinks: (opts: { planId: string }) => call<{ links: Record<string, { projectId: string; name: string; issues: { total: number; done: number }; monthId: string }> }>("mentor_plan_project_links", opts),
   mentorPlanProjectCreate: (opts: { planId: string; monthId: string }) => call<{ link: { projectId: string; name: string; issues: { total: number; done: number }; monthId: string }; created: boolean }>("mentor_plan_project_create", opts),
   /** Skills (instrucciones de generación): lista, lectura, guardado con historial, restauración y peticiones de cambio (IA de la app o prompt). */
+  skillsCustomList: (subject: string) => call<Array<{ name: string; file: string }>>("skills_custom_list", { subject }),
+  skillsCustomCreate: (opts: { subject: string; name: string; text: string }) => call<{ file: string }>("skills_custom_create", opts),
   skillsList: () => call<{ subjects: Array<{ subject: string; skills: import("./types").SkillInfo[] }>; maxPast: number }>("skills_list"),
   skillsGet: (o: { subject: string; kind: string; versionId?: string }) => call<{ text: string; info: import("./types").SkillInfo; versionId?: string }>("skills_get", o),
   skillsSave: (o: { subject: string; kind: string; text: string }) => call<import("./types").SkillInfo>("skills_save", o),

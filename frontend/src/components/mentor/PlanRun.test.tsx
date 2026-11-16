@@ -85,6 +85,18 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("prácticas diarias", () => {
+  it("abre la vista desde Mentor y explica cuando no existen prácticas por área", async () => {
+    vi.spyOn(api, "mentorPlanGet").mockResolvedValue(loaded());
+    vi.spyOn(api, "mentorAreaPractice").mockResolvedValue({ today: TODAY, ppReady: false, ppBase: "", areas: [] });
+    await mountEl(<PlanWorkspace planId={PID} />);
+    await click(runTab("practicas-diarias"));
+    expect(byTest("daily-area-practice")).toBeTruthy();
+    expect(host.textContent).toContain("No hay prácticas por área disponibles");
+    expect(runTab("practicas-diarias")?.getAttribute("aria-current")).toBe("page");
+  });
+});
+
 describe("vista de ejecución", () => {
   it("un plan mantenido abre en ejecución: hoy, avance por área y sin pestañas", async () => {
     vi.spyOn(api, "mentorPlanGet").mockResolvedValue(loaded());
@@ -98,7 +110,7 @@ describe("vista de ejecución", () => {
     expect(byTest("run-today")!.textContent).toContain("Semana 1");
     expect(byTest("run-today")!.textContent).toContain("12 de octubre");
     // la barra lateral (modo Ejecución): Hoy, una por área, Proyectos y Registros; la página no repite la barra
-    expect([...host.querySelectorAll("aside nav > div > button")].map((b) => b.getAttribute("data-testid"))).toEqual(["nav-ej:general", "nav-ej:area:s1", "nav-ej:area:s2", "nav-ej:proyectos", "nav-ej:registros"]);
+    expect([...host.querySelectorAll("aside nav > div > button")].map((b) => b.getAttribute("data-testid"))).toEqual(["nav-ej:general", "nav-ej:area:s1", "nav-ej:area:s2", "nav-ej:practicas-diarias", "nav-ej:proyectos", "nav-ej:registros"]);
     expect(byTest("run-nav")).toBeNull();
     expect(runTab("general")!.getAttribute("aria-current")).toBe("page");
     // General: solo el avance de cada área en la columna lateral, sin listas de temas ni «Cómo voy»
@@ -116,6 +128,25 @@ describe("vista de ejecución", () => {
     expect(host.textContent).not.toContain("Con práctica");
     await click(runTab("area:s2"));
     expect(work().querySelector("h2")!.textContent).toBe("Python");
+  });
+
+  it("la ruta interactiva muestra los temas activos del área sin Bases ni omitidos", async () => {
+    const backend = { ...sub("s1", "Backend", "Aprender", F1), groups: [{ id: "bases", title: "Bases", kind: "bases" }, { id: "python", title: "Python", kind: "language" }], topics: [
+      { folder: F1, title: "Base activa", targetWeek: 1, estMinutes: 60, group: "bases" },
+      { folder: F2, title: "Python activo", targetWeek: 1, estMinutes: 60, group: "python" },
+      { folder: "omitido", title: "Tema omitido", targetWeek: 1, estMinutes: 60, group: "python", route: "skipped" },
+    ] };
+    const p = plan({ subplans: [backend, sub("s2", "Frontend", "Otro", "frontend")] as never });
+    vi.spyOn(api, "mentorPlanGet").mockResolvedValue(loaded(p));
+    await mountEl(<PlanWorkspace planId={PID} />);
+    await click(runTab("area:s1"));
+    await click(runTab("area:s1:interactiva"));
+    const nodes = all("route-node").map((node) => node.textContent);
+    expect(nodes).toHaveLength(1);
+    expect(nodes.join(" ")).toContain("Python activo");
+    expect(nodes.join(" ")).not.toContain("Base activa");
+    expect(nodes.join(" ")).not.toContain("omitido");
+    expect(nodes.join(" ")).not.toContain("frontend");
   });
 
   it("permite alternar entre la ruta interactiva y la informativa de un área", async () => {

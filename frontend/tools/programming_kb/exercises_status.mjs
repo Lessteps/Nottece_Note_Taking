@@ -88,7 +88,7 @@ if (isMain) {
     console.error(`Unknown phase "${phase}" (use min, basic or ladder).`);
     process.exit(2);
   }
-  const rest = args.filter((a, i) => !(i === nextIdx || i === nextIdx + 1 || i === phaseIdx || i === phaseIdx + 1));
+  const rest = args.filter((_, i) => !(nextIdx >= 0 && (i === nextIdx || i === nextIdx + 1)) && !(phaseIdx >= 0 && (i === phaseIdx || i === phaseIdx + 1)));
   const re = rest.length ? new RegExp(rest[0]) : null;
   const topics = scanTopics().filter((t) => !re || re.test(t.folder) || re.test(path.basename(t.folder)));
 

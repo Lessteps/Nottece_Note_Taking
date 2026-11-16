@@ -1497,6 +1497,7 @@ export interface MentorPlannedTopic {
   topicProject?: import("./planTopicProject").TopicProject;
   /** llegó al plan con «Añadir al plan» (temas de referencia creados con el agente externo) */
   addedFrom?: "curriculum";
+  revisionAddedAt?: string;
   /** identificador estable del tema (resiste cambios en la estructura de carpetas de la vault) */
   topicId?: string;
   tags?: string[];
@@ -1506,7 +1507,7 @@ export interface MentorRequiredGoal { goalId: string; itemId?: string; note: str
 export interface MentorDeliverable { title: string; description: string; criteria: string[]; projectId?: string; status: MentorDeliverableStatus }
 export interface MentorSubplan {
   id: string; area: string; objective: string; goalId?: string; goalItemIds?: string[];
-  topics: MentorPlannedTopic[]; weeks: MentorWeekSlice[]; requiredGoals: MentorRequiredGoal[]; deliverable?: MentorDeliverable; notes?: string;
+  topics: MentorPlannedTopic[]; weeks: MentorWeekSlice[]; requiredGoals: MentorRequiredGoal[]; deliverable?: MentorDeliverable; notes?: string; learningGuide?: string;
   /** plan por áreas: id del área elemental, sus grupos internos, sus semanas activas y, si se completó con reglas, por qué */
   areaId?: string; groups?: AreaGroup[]; phase?: AreaPhase; fallback?: { kind: "rules" | "mixed"; reason: string };
 }
@@ -1635,7 +1636,7 @@ export interface MentorHandoffScheme {
 export type MentorExecutionStartResult = { loading: true } | { loading: false; execution: MentorExecutionView | null };
 /** Sistema de práctica por área de un plan (`mentor_area_practice`); ver `lib/areaPracticeView.ts`. */
 export interface MentorAreaPractice { today: string; ppReady: boolean; ppBase: string; areas: import("./areaPracticeView").AreaPracticeView[] }
-export interface MentorTopicView extends MentorPlannedTopic { state: MentorTopicState; pct: number; found: boolean; exercises?: number }
+export interface MentorTopicView extends MentorPlannedTopic { state: MentorTopicState; pct: number; found: boolean; lastAttemptAt?: string | null; exercises?: number }
 export interface MentorSubplanView { id: string; topics: MentorTopicView[]; total: number; done: number; pct: number; currentWeek: number }
 export interface MentorPlanDerived {
   subplans: MentorSubplanView[];
@@ -2048,7 +2049,7 @@ export interface FixResolution {
 /** Una skill (instrucciones de generación de una pieza) con su versión actual y hasta 3 pasadas. */
 export interface SkillInfo {
   subject: string;
-  kind: "theory" | "canvas" | "practica";
+  kind: "theory" | "canvas" | "practica" | "ejercicios";
   label: string;
   file: string;
   version: string | null;

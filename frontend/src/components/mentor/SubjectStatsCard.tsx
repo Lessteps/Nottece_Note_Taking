@@ -1,8 +1,9 @@
+import { memo, useMemo } from "react";
 import type { MentorPlan, MentorSubplan } from "../../lib/types";
 import { usePersistedNav } from "../../store/navState";
 import { ProgressBar } from "./parts";
 
-export function SubjectStatsCard({
+export const SubjectStatsCard = memo(function SubjectStatsCard({
   plan,
   sub,
 }: {
@@ -16,36 +17,69 @@ export function SubjectStatsCard({
 
   // los fundamentos («Bases») no son una asignatura del área: tienen su propia pestaña
   const own = (sub.groups ?? []).filter((g) => g.kind !== "bases");
-  const groups = own.length > 0
-    ? own
-    : [{ id: "core", title: "Temas generales", kind: "knowledge" as const, order: 100 }];
+  const groups = useMemo(
+    () => (own.length > 0 ? own : [{ id: "core", title: "Temas generales", kind: "knowledge" as const, order: 100 }]),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sub.groups]
+  );
 
-  // Calcular estadísticas por asignatura
-  const liveTopics = sub.topics.filter((t) => t.route !== "skipped");
-  const statsByGroup = groups.map((g) => {
-    const groupTopics = liveTopics.filter((t) => (t.group ?? "core") === g.id);
-    const doneTopics = groupTopics.filter((t) => !!t.completedAt);
-    const totalMin = groupTopics.reduce((acc, t) => acc + (t.estMinutes || 45), 0);
-    const doneMin = doneTopics.reduce((acc, t) => acc + (t.estMinutes || 45), 0);
-    const pct = groupTopics.length > 0 ? Math.round((doneTopics.length / groupTopics.length) * 100) : 0;
-    return {
-      group: g,
-      total: groupTopics.length,
-      done: doneTopics.length,
-      pct,
-      totalMin,
-      doneMin,
+  // Calcular estadísticas por asignatura en una sola pasada memoizada
+  const { statsByGroup, allStats } = useMemo(() => {
+    const liveTopics = sub.topics.filter((t) => t.route !== "skipped");
+    const groupMap = new Map<string, { total: number; done: number; totalMin: number; doneMin: number }>();
+    for (const g of groups) {
+      groupMap.set(g.id, { total: 0, done: 0, totalMin: 0, doneMin: 0 });
+    }
+    let allDone = 0;
+    let allTotalMin = 0;
+    let allDoneMin = 0;
+
+    for (const t of liveTopics) {
+      const gid = t.group ?? "core";
+      const gm = groupMap.get(gid);
+      const isDone = !!t.completedAt;
+      const mins = t.estMinutes || 45;
+      if (gm) {
+        gm.total++;
+        gm.totalMin += mins;
+        if (isDone) {
+          gm.done++;
+          gm.doneMin += mins;
+        }
+      }
+      allTotalMin += mins;
+      if (isDone) {
+        allDone++;
+        allDoneMin += mins;
+      }
+    }
+
+    const byGroup = groups.map((g) => {
+      const gm = groupMap.get(g.id) ?? { total: 0, done: 0, totalMin: 0, doneMin: 0 };
+      const pct = gm.total > 0 ? Math.round((gm.done / gm.total) * 100) : 0;
+      return {
+        group: g,
+        total: gm.total,
+        done: gm.done,
+        pct,
+        totalMin: gm.totalMin,
+        doneMin: gm.doneMin,
+      };
+    });
+
+    const all = {
+      group: { id: "all", title: "Todas las asignaturas", kind: "knowledge" as const, order: 0 },
+      total: liveTopics.length,
+      done: allDone,
+      pct: liveTopics.length > 0 ? Math.round((allDone / liveTopics.length) * 100) : 0,
+      totalMin: allTotalMin,
+      doneMin: allDoneMin,
     };
-  });
 
-  const activeStat = statsByGroup.find((s) => s.group.id === selectedSubject) ?? {
-    group: { id: "all", title: "Todas las asignaturas", kind: "knowledge" as const, order: 0 },
-    total: liveTopics.length,
-    done: liveTopics.filter((t) => !!t.completedAt).length,
-    pct: liveTopics.length > 0 ? Math.round((liveTopics.filter((t) => !!t.completedAt).length / liveTopics.length) * 100) : 0,
-    totalMin: liveTopics.reduce((acc, t) => acc + (t.estMinutes || 45), 0),
-    doneMin: liveTopics.filter((t) => !!t.completedAt).reduce((acc, t) => acc + (t.estMinutes || 45), 0),
-  };
+    return { statsByGroup: byGroup, allStats: all };
+  }, [sub.topics, groups]);
+
+  const activeStat = statsByGroup.find((s) => s.group.id === selectedSubject) ?? allStats;
 
   return (
     <div
@@ -113,4 +147,4 @@ export function SubjectStatsCard({
       </div>
     </div>
   );
-}
+});

@@ -20,6 +20,7 @@ export const MAX_PAST = 3;
 export const SKILL_KINDS = {
   theory: { file: "resumen_teorico_skill.md", label: "Notas de teoría (md)", makes: "la nota de teoría `<tema>/<tema>.md`" },
   canvas: { file: "mapa_skill.md", label: "Mapa (canvas)", makes: "el mapa explicativo `<tema> — mapa.canvas`" },
+  ejercicios: { file: "ejercicios_skill.md", label: "Ejercicios", makes: "los ejercicios de práctica" },
   practica: { file: "practica_skill.md", label: "Archivos de práctica", makes: "el archivo de práctica `<tema>.practica.md` y sus ejercicios" },
 } as const;
 export type SkillKind = keyof typeof SKILL_KINDS;
@@ -164,12 +165,33 @@ export function skillsManagerApi(app: AppState, hooks: { now?: () => Date; ask?:
       try {
         text = fs.readFileSync(fileOf(subject, kind), "utf-8");
       } catch {
-        throw new ApiError("Esta skill aún no existe en la vault.");
+        if (kind !== "ejercicios") throw new ApiError("Esta skill aún no existe en la vault.");
       }
       return { text, info: infoOf(subject, kind) };
     };
 
   return {
+    skills_custom_list(input: unknown): Array<{ name: string; file: string }> {
+      const o = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
+      const subject = String(o.subject ?? "");
+      if (!subjects().includes(subject)) throw new ApiError("Esa materia no tiene skills.");
+      const dir = path.join(app.root, ".notevault", "skills", subject);
+      if (!fs.existsSync(dir)) return [];
+      return fs.readdirSync(dir, { withFileTypes: true }).filter((f) => f.isFile() && f.name.endsWith(".md")).map((f) => ({ name: f.name.slice(0, -3), file: `.notevault/skills/${subject}/${f.name}` }));
+    },
+    skills_custom_create(input: unknown): { file: string } {
+      const o = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
+      const subject = String(o.subject ?? ""), name = String(o.name ?? "").trim(), content = String(o.text ?? "").trim();
+      if (!subjects().includes(subject)) throw new ApiError("Esa materia no tiene skills.");
+      if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(name)) throw new ApiError("Usa letras, números, guiones o guiones bajos para el nombre.");
+      if (!content || content.length > MAX_CHARS) throw new ApiError("Escribe instrucciones válidas para la skill.");
+      const dir = path.join(app.root, ".notevault", "skills", subject);
+      fs.mkdirSync(dir, { recursive: true });
+      try { fs.writeFileSync(path.join(dir, `${name}.md`), `${content}\n`, { encoding: "utf8", flag: "wx" }); }
+      catch (e) { if ((e as NodeJS.ErrnoException).code === "EEXIST") throw new ApiError("Ya existe una skill con ese nombre."); throw e; }
+      return { file: `.notevault/skills/${subject}/${name}.md` };
+    },
+
     skills_list(): { subjects: Array<{ subject: string; skills: SkillInfo[] }>; maxPast: number } {
       return { subjects: subjects().map((subject) => ({ subject, skills: KINDS.map((k) => infoOf(subject, k)) })), maxPast: MAX_PAST };
     },

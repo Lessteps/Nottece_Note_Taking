@@ -8,6 +8,7 @@
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { topicLearningContext } from "./learningContext.js";
 import { generateConcept } from "../../../tools/kb_canvas";
 import { AIConfig } from "../../core/aiClient.js";
 import { applyAssistantAction, ensureTopicManifest, safeName, subjectIdOf } from "../../core/assistantActions.js";
@@ -299,6 +300,7 @@ export const theoryMessagesFor = (
       role: "user",
       content:
         `Subject: ${subjectName}. Area: ${areaName}. Topic: ${topic}.\n` +
+        topicLearningContext(app, [spaceFolder, areaName, topic].join("/")) +
         `Earlier topics you may use as prerequisites in "## Requires" (EXACT name between [[ ]]; only these): ${previous.length ? previous.join("; ") : "(none: write *No prerequisites.*)"}.\n\n` +
         `Write the complete note in Markdown WITHOUT frontmatter (the app adds it). Start with "# ${topic}" and end with "## Cards". ` +
         "Include 3 examples and 4-5 mistakes, each with its four exact fields, and real, runnable code in the examples." +
@@ -316,6 +318,7 @@ export const theoryMessagesFor = (
       role: "user",
       content:
         `Materia: ${subjectName}. Área: ${areaName}. Tema: ${topic}.\n` +
+        topicLearningContext(app, [spaceFolder, areaName, topic].join("/")) +
         englishBrief(subjectName, areaName) +
         `Temas anteriores que puedes usar como prerrequisito en «## Requiere» (nombre EXACTO entre [[ ]]; solo estos): ${previous.length ? previous.join("; ") : "(ninguno: escribe *Sin prerrequisitos.*)"}.\n\n` +
         `Escribe la nota completa en Markdown SIN frontmatter (lo añade la app). Empieza con «# ${topic}» y termina con «## Tarjetas». ` +
@@ -412,7 +415,7 @@ export function studySpaceApi(app: AppState) {
       for (const { area, topic } of allTopics) {
         const topicAbs = path.join(app.root, folder, area, topic);
         const file = path.join(topicAbs, `${topic}.md`);
-        if (!(req.only && req.force) && fs.existsSync(file) && !isCutDraft(fs.readFileSync(file, "utf-8"))) {
+        if (!(req.only && req.force) && fs.existsSync(file) && fs.readFileSync(file, "utf-8").trim() && !isCutDraft(fs.readFileSync(file, "utf-8"))) {
           say(`Teoría de «${topic}»: ya existe, se deja como está.`);
           tick();
           continue;
@@ -659,11 +662,13 @@ export function studySpaceApi(app: AppState) {
       const parts = String(folderRel ?? "").replace(/\\/g, "/").split("/").filter(Boolean);
       const abs = path.join(app.root, ...parts);
       const dir = fs.existsSync(abs) && fs.statSync(abs).isFile() ? parts.slice(0, -1) : parts;
-      if (dir.length !== 3) {
+      if (dir.length < 3 || dir.some((part) => part === ".." || part === ".")) {
         throw new ApiError("Selecciona la carpeta de un tema (Espacio / Área / Tema).");
       }
-      const [space, area, topic] = dir as [string, string, string];
-      const areaAbs = path.join(app.root, space, area);
+      const space = dir[0]!;
+      const topic = dir[dir.length - 1]!;
+      const area = dir.slice(1, -1).join("/");
+      const areaAbs = path.join(app.root, space, ...dir.slice(1, -1));
       if (!fs.existsSync(path.join(areaAbs, topic))) throw new ApiError("Esa carpeta no existe.");
       const siblings = fs
         .readdirSync(areaAbs, { withFileTypes: true })

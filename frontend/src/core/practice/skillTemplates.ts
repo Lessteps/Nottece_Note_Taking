@@ -20,6 +20,7 @@ export function readSkillTemplates(rootAbs: string, folderRel: string): SkillTem
   const first = folderRel.replace(/\\/g, "/").split("/").filter(Boolean)[0];
   const dirs = [path.join(rootAbs, "_skills")];
   if (first && !first.startsWith("_")) dirs.push(path.join(rootAbs, first, "_skills"));
+  if (first && !first.startsWith("_")) dirs.push(path.join(rootAbs, ".notevault", "skills", first));
   const out: SkillTemplate[] = [];
   for (const dir of dirs) {
     let files: fs.Dirent[];

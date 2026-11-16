@@ -59,6 +59,7 @@ describe("addTopicsToPlan", () => {
     // por número de carpeta: 11.1, 12.2, 12.10
     expect(fe.topics.slice(fe0.topics.length).map((t) => t.title)).toEqual(["Tema 1", "Tema 2", "Tema 10"]);
     expect(fe.topics.slice(fe0.topics.length).every((t) => t.addedFrom === "curriculum" && !t.route)).toBe(true);
+    expect(fe.topics.slice(fe0.topics.length).every((t) => /^\d{4}-\d{2}-\d{2}$/.test(t.revisionAddedAt ?? ""))).toBe(true);
     expect(fe.topics.slice(fe0.topics.length).map((t) => t.group)).toEqual(["html", "css", "css"]);
     // las demás áreas no cambian
     expect(r.plan.subplans.find((s) => s.areaId === "backend")).toEqual(plan.subplans.find((s) => s.areaId === "backend"));

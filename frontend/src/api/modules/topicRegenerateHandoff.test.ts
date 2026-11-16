@@ -118,6 +118,40 @@ describe("la tarea para el agente externo", () => {
     expect(exists(".trash")).toBe(false);
   });
 
+  it("incluye temas anidados en la tarea y usa su carpeta completa en el prompt", async () => {
+    const nested = "Programación/5 Frontend/HTML/5.18 HTML";
+    put(`${nested}/5.18 HTML.md`, OLD_NOTE.replace("# 4.1 Uno", "# 5.18 HTML"));
+    const h = await make().study_topic_regenerate_handoff(nested, "theory", true);
+    expect(read(h.task)).toContain(`\`${nested}/5.18 HTML.md\``);
+    expect(read(h.task)).toContain("5.18 HTML");
+  });
+
+  it("lleva la guía del plan tanto a la práctica como a los ejercicios", async () => {
+    put(".notevault/mentor/plans/2026-10-06_2027-04-05.json", JSON.stringify({ id: "2026-10-06_2027-04-05", start: "2026-10-06", end: "2027-04-05", subplans: [{ id: "s1", area: "Backend", objective: "API", learningGuide: "GUIDE_FOR_BEGINNERS", topics: [{ folder: A, title: "4.1 Uno", targetWeek: 1, estMinutes: 60, group: "g" }] }] }));
+    const api = make();
+    const practice = await api.study_topic_regenerate_handoff(A, "practice", true);
+    expect(read(practice.task)).toContain("GUIDE_FOR_BEGINNERS");
+    const exercises = await api.study_topic_regenerate_handoff(A, "exercises", true);
+    expect(read(exercises.task)).toContain("GUIDE_FOR_BEGINNERS");
+  });
+
+  it("incluye la guía y el progreso registrado del plan en el handoff sin confundir orden con dominio", async () => {
+    put(".notevault/mentor/plans/2026-10-06_2027-04-05.json", JSON.stringify({
+      id: "2026-10-06_2027-04-05", start: "2026-10-06", end: "2027-04-05", name: "Ruta junior", rationale: "Automatizar procesos", subplans: [{ id: "s1", area: "Backend", objective: "Crear APIs", notes: "Explicar desde cero", topics: [
+        { folder: B, title: "4.2 Dos", targetWeek: 1, estMinutes: 60, group: "core", completedAt: "2026-10-10" },
+        { folder: A, title: "4.1 Uno", targetWeek: 2, estMinutes: 60, group: "core" },
+      ] }],
+    }));
+    const h = await make().study_topic_regenerate_handoff(A, "theory", true);
+    const md = read(h.task);
+    expect(md).toContain("CONTRATO-DE-TEORIA");
+    expect(md).toContain("Ruta junior");
+    expect(md).toContain("Automatizar procesos");
+    expect(md).toContain("Explicar desde cero");
+    expect(md).toContain("1 of 2 topics completed");
+    expect(md).toContain("Planned before does not mean mastered");
+  });
+
   it("funciona con la IA en modo puente: escribe la tarea con carpeta, skill incrustada, contrato y copias", async () => {
     const h = await make().study_topic_regenerate_handoff(A, "theory", true);
     expect(h.status).toBe("waiting");
@@ -242,9 +276,10 @@ describe("validar lo que escribió el agente", () => {
     expect(st.status).toBe("validated");
     expect(st.topics[0]!.state).toBe("ok");
     expect(read(`${A}/4.1 Uno.md`)).toContain("mm NUEVO");
-    // el mapa se rehízo desde la nota; el canvas de antes (editado a mano, sin la marca de generado) se conserva y el nuevo va aparte
-    expect(st.topics[0]!.created.some((f) => f.endsWith(".canvas"))).toBe(true);
-    expect(read(`${A}/4.1 Uno — mapa.canvas`)).toContain('"id":"old"');
+    // El mapa visible se actualiza sin duplicados y el anterior queda en el respaldo de la tarea.
+    expect(read(`${A}/4.1 Uno — mapa.canvas`)).not.toContain('"id":"old"');
+    expect(read(`${h.topics[0]!.backup}/4.1 Uno — mapa.canvas`)).toContain('"id":"old"');
+    expect(exists(`${A}/4.1 Uno — mapa.nuevo.canvas`)).toBe(false);
   });
 
   it("teoría cortada: falla con el motivo, deja lo del agente y «restaurar» devuelve la copia", async () => {

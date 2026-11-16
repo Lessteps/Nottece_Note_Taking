@@ -37,7 +37,7 @@ describe("pistas de la Ejecución", () => {
     expect(links.find((l) => l.tab === "area:s2")!.hint).toBe("0/1");
     expect(links.find((l) => l.tab === "general")!.hint).toBeUndefined();
     expect(links.some((l) => l.tab === "bases")).toBe(false);
-    expect(ejecucionLinks(noBases, { hints, basesToday: true }).map((l) => l.tab)).toEqual(["general", "area:s2", "bases", "proyectos", "registros"]);
+    expect(ejecucionLinks(noBases, { hints, basesToday: true }).map((l) => l.tab)).toEqual(["general", "area:s2", "bases", "practicas-diarias", "proyectos", "registros"]);
   });
 });
 

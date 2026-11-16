@@ -121,6 +121,15 @@ describe("mentor_area_kata_mark", () => {
     expect(r.areas.find((a: any) => a.areaId === "backend").kata.due[0]).toMatchObject({ day: 8, date: TODAY, state: "skipped" });
   });
 
+  it("acepta la verificación de un reto futuro por su archivo sin contar dos veces el intento", () => {
+    const future = addDays(TODAY, 1);
+    const folder = path.join(dir, ".notevault", "estudio", "intentos"); fs.mkdirSync(folder, { recursive: true });
+    fs.writeFileSync(path.join(folder, "ahead.json"), JSON.stringify({ note_id: "ahead", note_path: "Programación/programming_practice/backend/katas/011 x.md", attempts: [{ at: `${TODAY}T10:00:00`, skill: "pp_kata", mode: "pp_kata", verdict: "correct", score: 90 }] }));
+    const result: any = api().mentor_area_kata_mark({ id, areaId: "backend", date: future, status: "done" });
+    expect(result.areas.find((a: any) => a.areaId === "backend").kata.doneDays).toBe(1);
+    expect(result.areas.find((a: any) => a.areaId === "backend").kata.next.kata.day).toBe(1);
+  });
+
   it("marca hecho / saltado, se refleja en el estado y se quita; solo escribe datos de la app", () => {
     attempt("frontend", TODAY);
     attempt("backend", START);
@@ -137,14 +146,22 @@ describe("mentor_area_kata_mark", () => {
     expect(fs.readdirSync(path.join(dir, "Programación")).sort()).toEqual(["Programación.resumen.md", "programming_practice"]);
   });
 
-  it("rechaza fechas futuras, áreas que no son del plan y estados inválidos", () => {
-    expect(() => api().mentor_area_kata_mark({ id, areaId: "backend", date: addDays(TODAY, 1), status: "done" })).toThrow(/hoy o de días pasados/);
+  it("exige verificación sin bloquear un reto por su fecha y rechaza áreas o estados inválidos", () => {
+    expect(() => api().mentor_area_kata_mark({ id, areaId: "backend", date: addDays(TODAY, 1), status: "done" })).toThrow(/aún no está verificado/);
     expect(() => api().mentor_area_kata_mark({ id, areaId: "databases", date: TODAY, status: "done" })).toThrow(/no está en el plan/);
     expect(() => api().mentor_area_kata_mark({ id, areaId: "backend", date: TODAY, status: "raro" })).toThrow(/Estado inválido/);
   });
 });
 
 describe("mentor_area_kata_open: el acceso directo al kata siempre existe", () => {
+  it("permite abrir cualquier reto planeado anterior o posterior sin depender del día actual", () => {
+    const first: any = api().mentor_area_kata_open({ id, areaId: "backend", date: START });
+    const next: any = api().mentor_area_kata_open({ id, areaId: "backend", date: addDays(TODAY, 5) });
+    expect(first.date).toBe(START);
+    expect(next.date).toBe(addDays(TODAY, 5));
+    expect(first.rel).not.toBe(next.rel);
+  });
+
   it("crea el kata que toca si falta (y su estructura mínima), devuelve su ruta y no sobrescribe nada", () => {
     const pp = path.join(dir, "Programación", "programming_practice");
     expect(fs.existsSync(path.join(pp, "backend"))).toBe(false);
@@ -187,13 +204,13 @@ describe("katas atrasados y carpetas por área", () => {
     expect(after.areas[0].kata.due[0]).toMatchObject({ day: 2, state: "pending" });
   });
 
-  it("mentor_area_kata_open con fecha solo abre el siguiente kata sin hacer, no uno de otro día", () => {
+  it("mentor_area_kata_open permite abrir cualquier kata del plan y rechaza fechas ajenas", () => {
     const r: any = api().mentor_area_kata_open({ id, areaId: "backend", date: TODAY });
     expect(r.date).toBe(TODAY);
     expect(r.created).toBe(true);
     expect(r.rel).toContain("001");
     expect(fs.existsSync(path.join(dir, ...r.rel.split("/")))).toBe(true);
-    expect(() => api().mentor_area_kata_open({ id, areaId: "backend", date: START })).toThrow(/no tiene kata/);
+    expect(api().mentor_area_kata_open({ id, areaId: "backend", date: START }).date).toBe(START);
     expect(() => api().mentor_area_kata_open({ id, areaId: "backend", date: "2020-01-01" })).toThrow(/no tiene kata/);
   });
 

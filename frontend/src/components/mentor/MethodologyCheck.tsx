@@ -1,159 +1,29 @@
-// Mentor — «Verificar metodología»: junto a «Agregar nuevos temas». Mira el alcance donde estás (todas las áreas, un área o una asignatura) y dice
-// qué falta frente al currículo de referencia —con HTML, CSS y los métodos de un lenguaje contados pieza a pieza— y qué temas habría que partir en
-// subtemas. Sin IA local: (1) «Crear con Antigravity» escribe la tarea para el agente externo; (2) «Copiar prompt de revisión» deja el texto listo
-// para pegar en cualquier IA. La app no crea temas por sí misma.
-
-import { ClipboardCheck, ClipboardCopy, ChevronRight, ListOrdered, Loader2, Sparkles } from "lucide-react";
-import { useMemo, useState } from "react";
+import { ClipboardCheck, ClipboardCopy, Loader2, Sparkles } from "lucide-react";
+import { useState } from "react";
 import { api } from "../../lib/bridge";
 import { copyText } from "../../lib/clipboard";
-import { curriculumIdsOfScope, parseOrderReply, reviewPrompt, type MethodologyScope, type ScopeTopic } from "../../lib/methodologyScope";
-import { useMentor } from "../../store/mentor";
+import { reviewPrompt, type MethodologyScope, type ScopeTopic } from "../../lib/methodologyScope";
 import { useApp } from "../../store/app";
-import { useCoverage } from "../../store/curriculum";
-import { Chip, GhostButton, Modal } from "../common/forms";
+import { GhostButton, Modal } from "../common/forms";
 import { cn } from "../ui";
-import { CoverageRing, LEVEL_COLOUR, LEVEL_LABEL } from "../study/CurriculumBadges";
-import { CurriculumGaps } from "../study/CurriculumGaps";
 
-export function MethodologyCheckButton({ scope, topics, label = "Verificar metodología", className, testid = "methodology-check", planId }: { scope: MethodologyScope; topics: readonly ScopeTopic[]; label?: string; className?: string; testid?: string; /** el plan donde se aplica la organización; sin él solo se revisa */ planId?: string }) {
+export function MethodologyCheckButton({ scope, topics, label = "Verificar metodología", className, testid = "methodology-check" }: { scope: MethodologyScope; topics: readonly ScopeTopic[]; label?: string; className?: string; testid?: string; planId?: string }) {
   const toast = useApp((s) => s.toast);
-  const { areas, loaded, error } = useCoverage();
   const [open, setOpen] = useState(false);
-  const [gapsId, setGapsId] = useState<string | null>(null);
   const [reviewing, setReviewing] = useState(false);
-  const [aiText, setAiText] = useState("");
-  const [pasted, setPasted] = useState("");
-  const [organizing, setOrganizing] = useState(false);
-
-  /** ORGANIZAR: la app reordena por números/ids y reparte en semanas; si una IA dio un orden (`order`), lo valida contra el plan y lo aplica. Sin IA también funciona. */
-  const organize = async (order?: string[]): Promise<void> => {
-    if (!planId) return;
-    setOrganizing(true);
-    try {
-      const body = { id: planId, ops: [{ op: "organize", ...(order?.length ? { order } : {}) }], label: order ? "Organizar el plan con el orden de la IA" : "Organizar el plan por números e ids" };
-      let r = await api.mentorPlanChange(body);
-      for (let i = 0; r.loading && i < 40; i++) {
-        await new Promise((ok) => setTimeout(ok, 1500));
-        r = await api.mentorPlanChange(body);
-      }
-      if (r.loading) throw new Error("El índice de la vault tarda demasiado en estar listo. Inténtalo de nuevo en un momento.");
-      toast("info", r.applied ? `Plan organizado: ${r.entry.summary || "orden y semanas actualizados"}. Puedes deshacerlo en «Preguntas y ajustes».` : "El plan ya estaba bien organizado: no hay nada que cambiar.");
-      if (r.applied) useMentor.setState((st) => ({ planVersion: st.planVersion + 1 }));
-    } catch (e) {
-      toast("error", (e as Error).message);
-    } finally {
-      setOrganizing(false);
-    }
+  const [answer, setAnswer] = useState("");
+  const prompt = reviewPrompt(scope, topics);
+  const copy = async (text: string) => { const ok = await copyText(text); toast(ok ? "info" : "error", ok ? "Texto copiado." : "No se pudo copiar el texto."); };
+  const review = async () => {
+    setReviewing(true); setAnswer("");
+    try { const r = await api.mentorMethodologyReview({ prompt }); if (!r.aiConfigured) toast("info", "Configura una IA o copia el prompt para revisarlo con otra herramienta."); else setAnswer(r.text || "La IA no devolvió una respuesta."); }
+    catch (e) { toast("error", (e as Error).message); } finally { setReviewing(false); }
   };
-
-  const ids = useMemo(() => curriculumIdsOfScope(scope, areas.map((a) => a.areaId)), [scope, areas]);
-  const mine = areas.filter((a) => ids.includes(a.areaId));
-  const missing = mine.reduce((n, a) => n + a.missing, 0);
-  const folders = mine.map((a) => `${a.space}/${a.areaFolder}`);
-
-  const copyPrompt = async (): Promise<void> => {
-    const ok = await copyText(reviewPrompt(scope, topics, folders));
-    toast(ok ? "info" : "error", ok ? "Prompt copiado: pégalo en tu IA." : "No se pudo copiar el prompt.");
-  };
-  /** Con la IA de la app (clave de API o modelo local); sin ella, lo dice y quedan Antigravity y el prompt */
-  const reviewWithAi = async (): Promise<void> => {
-    setReviewing(true);
-    setAiText("");
-    try {
-      const r = await api.mentorMethodologyReview({ prompt: reviewPrompt(scope, topics, folders) });
-      if (!r.aiConfigured) toast("info", "La IA de la app no está configurada: usa «Ver y crear lo que falta» (Antigravity) o copia el prompt.");
-      else {
-        setAiText(r.text || "La IA no devolvió nada.");
-        // la IA da la lógica (el orden); la app la aplica y la muestra
-        const order = parseOrderReply(r.text);
-        if (order && planId) await organize(order);
-      }
-    } catch (e) {
-      toast("error", (e as Error).message);
-    } finally {
-      setReviewing(false);
-    }
-  };
-  const close = (): void => {
-    setOpen(false);
-    setGapsId(null);
-  };
-
-  return (
-    <>
-      <GhostButton large="md" className={cn(className)} onClick={() => setOpen(true)} aria-expanded={open} data-testid={testid}>
-        <ClipboardCheck size={15} aria-hidden /> {label}
-      </GhostButton>
-      {open && (
-        <Modal title={gapsId ? "Temas por crear" : `Verificar metodología · ${scope.label}`} onClose={close} width={gapsId ? 980 : 720}>
-          {gapsId ? (
-            <div className="-mx-5 -my-4 flex max-h-[70vh] min-h-0 flex-col">
-              <CurriculumGaps areaId={gapsId} onBack={() => setGapsId(null)} />
-            </div>
-          ) : (
-            <>
-              <p className="text-[14px] text-dim" data-testid="methodology-intro">
-                Compara lo que tienes con lo que esta materia necesita. En HTML, CSS y los métodos de un lenguaje se aprende <strong>pieza a pieza</strong>: una nota por elemento, propiedad o función, y los temas grandes se parten en subtemas en orden. Aquí ves qué falta y cómo crearlo, aunque no tengas una IA local.
-              </p>
-              {error && <p role="alert" className="text-[14px] text-danger">{error}</p>}
-              {!loaded && !error && <p role="status" className="text-[14px] text-dim">Leyendo el currículo…</p>}
-              {loaded && mine.length === 0 && (
-                <p className="rounded-xl border border-dashed border-line p-3 text-[14px] text-dim" data-testid="methodology-no-reference">
-                  Para «{scope.label}» todavía no hay un currículo de referencia con el que comparar. Usa «Copiar prompt de revisión» y una IA revisa tus temas con las mismas reglas.
-                </p>
-              )}
-              <ul className="space-y-2" data-testid="methodology-areas">
-                {mine.map((a) => (
-                  <li key={a.areaId} className="flex flex-wrap items-center gap-3 rounded-xl border border-line px-3 py-2.5" data-testid="methodology-area" data-area={a.areaId}>
-                    <CoverageRing pct={a.pct} level={a.level} size={48} />
-                    <span className="min-w-0 flex-1 basis-48">
-                      <span className="flex flex-wrap items-center gap-2 text-[14.5px] font-semibold text-text">
-                        {a.title}
-                        <Chip colour={LEVEL_COLOUR[a.level]}>{LEVEL_LABEL[a.level]}</Chip>
-                      </span>
-                      <span className="block text-[13px] text-dim">{a.covered} cubiertos · {a.partial} parciales · {a.missing} faltan · {a.total} temas de referencia (cada elemento o propiedad cuenta)</span>
-                    </span>
-                    <GhostButton large="md" onClick={() => setGapsId(a.areaId)} disabled={a.missing === 0 && a.partial === 0} data-testid={`methodology-open-${a.areaId}`}>
-                      {a.missing === 0 && a.partial === 0 ? "Completa" : "Ver y crear lo que falta"} <ChevronRight size={14} aria-hidden />
-                    </GhostButton>
-                  </li>
-                ))}
-              </ul>
-              {mine.length > 0 && <p className="text-[13.5px] text-dim" data-testid="methodology-total">En total faltan {missing} {missing === 1 ? "tema" : "temas"} de referencia en este alcance.</p>}
-              <div className="flex flex-wrap gap-2 border-t border-line pt-3">
-                <GhostButton large="md" onClick={() => void copyPrompt()} data-testid="methodology-copy-prompt">
-                  <ClipboardCopy size={15} aria-hidden /> Copiar prompt de revisión
-                </GhostButton>
-                <GhostButton large="md" onClick={() => void reviewWithAi()} disabled={reviewing} data-testid="methodology-ai-review" title="Usa la IA configurada en la app (clave de API o modelo local)">
-                  {reviewing ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <Sparkles size={15} aria-hidden />} Revisar con la IA de la app
-                </GhostButton>
-              </div>
-              {planId && (
-                <section className="space-y-2 rounded-xl border border-line p-3" data-testid="methodology-organize" aria-label="Organizar el plan">
-                  <h4 className="text-[14px] font-semibold text-text">Organización del plan</h4>
-                  <p className="text-[13px] text-dim">La app ordena los temas por sus números e ids (el tema general y luego cada pieza), jubila los genéricos antiguos y reparte las semanas con tu capacidad real. No usa IA, y se puede deshacer.</p>
-                  <GhostButton large="md" onClick={() => void organize()} disabled={organizing} data-testid="methodology-organize-btn">
-                    {organizing ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <ListOrdered size={15} aria-hidden />} Organizar el plan ahora
-                  </GhostButton>
-                  <label className="block text-[12.5px] text-faint">
-                    ¿Usaste otra IA (Antigravity, un chat)? Pega aquí su respuesta: si trae el bloque <code>json</code> con el orden, la app lo valida y lo aplica.
-                    <textarea value={pasted} onChange={(e) => setPasted(e.target.value)} rows={3} className="mt-1 w-full rounded-lg border border-line bg-card p-2 text-[13px] text-text" data-testid="methodology-paste" />
-                  </label>
-                  <GhostButton disabled={organizing || !parseOrderReply(pasted)} onClick={() => void organize(parseOrderReply(pasted) ?? undefined)} data-testid="methodology-apply-pasted">Aplicar el orden de esa respuesta</GhostButton>
-                </section>
-              )}
-              {aiText && (
-                <section aria-label="Respuesta de la IA" className="space-y-1.5" data-testid="methodology-ai-answer">
-                  <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-line bg-panel p-3 text-[13px] text-text">{aiText}</pre>
-                  <GhostButton onClick={() => void copyText(aiText).then((ok) => toast(ok ? "info" : "error", ok ? "Respuesta copiada." : "No se pudo copiar."))}><ClipboardCopy size={14} aria-hidden /> Copiar respuesta</GhostButton>
-                </section>
-              )}
-              <p className="text-[12.5px] text-faint">El prompt lleva tus {topics.length} {topics.length === 1 ? "tema" : "temas"} de «{scope.label}» y las reglas de metodología; la IA te dice qué partir y qué añadir.</p>
-            </>
-          )}
-        </Modal>
-      )}
-    </>
-  );
+  return <><GhostButton large="md" className={cn(className)} onClick={() => setOpen(true)} aria-expanded={open} data-testid={testid}><ClipboardCheck size={15} aria-hidden /> {label}</GhostButton>
+    {open && <Modal title={`Verificar metodología · ${scope.label}`} onClose={() => setOpen(false)} width={720}>
+      <div className="space-y-4"><p className="text-sm text-dim" data-testid="methodology-intro">Evalúa cómo estudiar esta materia: teoría, práctica, retroalimentación, evaluación y repaso. La revisión usa los temas actuales como contexto.</p>
+      <div className="flex flex-wrap gap-2"><GhostButton onClick={() => void copy(prompt)} data-testid="methodology-copy-prompt"><ClipboardCopy size={15} /> Copiar prompt de metodología</GhostButton><GhostButton onClick={() => void review()} disabled={reviewing} data-testid="methodology-ai-review">{reviewing ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />} Revisar con IA</GhostButton></div>
+      {answer && <section aria-label="Respuesta de la IA"><pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-line bg-panel p-3 text-sm">{answer}</pre><GhostButton onClick={() => void copy(answer)}>Copiar resultado</GhostButton></section>}
+      <p className="text-xs text-faint">Para guardar el resultado y revisar el contenido y orden de los temas, abre «Verificar plan».</p></div>
+    </Modal>}</>;
 }

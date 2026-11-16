@@ -191,7 +191,7 @@ export function ReportList({ report }: { report: ExecutionReport }) {
         const tasks = a.areaTasks.length + a.topics.reduce((n, t) => n + t.tasks.length, 0);
         const isOpen = open[a.key] ?? i === 0;
         return (
-          <details key={a.key} open={isOpen} onToggle={(e) => { const expanded = e.currentTarget.open; setOpen((o) => ({ ...o, [a.key]: expanded })); }} className="rounded-xl border border-line bg-surface/40 px-3 py-2" data-testid="exec-area">
+          <details key={a.key} open={isOpen} onToggle={(e) => { const expanded = (e.currentTarget as HTMLDetailsElement)?.open ?? false; setOpen((o) => ({ ...o, [a.key]: expanded })); }} className="rounded-xl border border-line bg-surface/40 px-3 py-2" data-testid="exec-area">
             <summary className="flex min-h-8 cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 text-[14px] font-semibold">
               <span>{a.area}</span>
               <span className="text-[13.5px] font-normal text-dim">{plural(tasks, "tarea", "tareas")}{a.topics.some((t) => t.manual.length) ? ` · ${a.topics.filter((t) => t.manual.length).length} para revisar a mano` : ""}</span>

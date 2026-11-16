@@ -8,7 +8,7 @@
 // vista de plan (`useAgendaModel`), así que ambas vistas nunca discrepan.
 
 import { CalendarDays, Info, ListPlus, Lock } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../lib/bridge";
 import { areaSets } from "../../lib/planAreaLists";
 import { planGateByArea } from "../../lib/planGate";
@@ -47,6 +47,7 @@ import { SectionHeading } from "./planKit";
 import { DAY_LONG, openAgendaAt, type Loaded } from "./planShared";
 import { hasBasesRoute as planHasBasesRoute, RUN_TAB_GENERAL, RUN_TAB_RECORDS, runAreaTab, runAreaInteractiveTab, runAreaInformativeTab, runTabKey } from "./mentorNav";
 import { PlanRecords } from "./PlanRecords";
+import { DailyAreaPractice } from "./DailyAreaPractice";
 
 import { VaultSyncBanner } from "./VaultSyncBanner";
 
@@ -85,12 +86,7 @@ export function PlanRun({ data, plan }: { data: Loaded; plan: MentorPlan }) {
     // sin empezar la ruta no hay ruta bloqueada: lo de hoy se puede abrir tal como lo reparte la Agenda
     return started ? g : { ...g, locked: new Map<string, string>() };
   }, [m.schedule, m.topicByFolder, started]);
-  // Aviso de constancia: lo atrasado y el ritmo que hace falta para llegar a la fecha de fin.
-  const catchUp = useMemo(() => {
-    const study = m.schedule.days.filter((d) => d.study && d.date >= date && d.date <= plan.end);
-    const cap = study.length ? Math.round(study.reduce((n, d) => n + d.capacityMinutes, 0) / study.length) : 0;
-    return catchUpOf(m.schedule.days.map((d) => ({ date: d.date, study: d.study, topics: d.topics.map((t) => ({ folder: t.folder, title: t.title, minutes: t.minutes, done: t.done, area: t.area })) })), date, plan.end, (f) => m.topicByFolder.get(f)?.state === "completo", cap);
-  }, [m.schedule, m.topicByFolder, date, plan.end]);
+
   // La práctica diaria de cada área vive en la pestaña de su área. Cada área debe tener su carpeta en programming_practice: si falta, NO se crea
   // sola (es escribir notas en la vault): se avisa con una tarjeta y solo se crea (estructura, sin katas, sin sobrescribir) al pulsar el botón.
   const ap = usePlanAreaPractice(plan.id);
@@ -116,13 +112,6 @@ export function PlanRun({ data, plan }: { data: Loaded; plan: MentorPlan }) {
   );
   const behind = started && !!gate.frontier && gate.frontier < date && !plan.proposed && !plan.archived;
   const titleOf = (folder: string): string => m.topicByFolder.get(folder)?.title ?? folder.split("/").pop() ?? folder;
-  // El reparto es POR AVANCE (ver `lib/planSchedule`): lo pendiente se coloca siempre desde hoy y en el orden de la ruta, así que nada queda
-  // «atrasado» por haber pasado los días. Lo único que se avisa es lo que de verdad no cabe antes de la fecha de fin (desbordado).
-  const overflow = useMemo(() => {
-    const seen = new Map<string, { folder: string; title: string; area: string }>();
-    for (const d of m.schedule.days) for (const t of d.topics) if (t.overflow && !t.done && m.topicByFolder.get(t.folder)?.state !== "completo" && !seen.has(t.folder)) seen.set(t.folder, { folder: t.folder, title: t.title, area: t.area });
-    return [...seen.values()];
-  }, [m.schedule, m.topicByFolder]);
   const { entries: timeEntries } = useTimeLog(plan.id);
 
   const planToday = () => {
@@ -188,16 +177,67 @@ export function PlanRun({ data, plan }: { data: Loaded; plan: MentorPlan }) {
   const cardOf = useMemo(() => new Map(cards.map((c) => [c.entry.subplanId, c] as const)), [cards]);
   const areaList = useMemo(() => orderedAreas(plan), [plan]);
   const hasBasesRoute = planHasBasesRoute(plan);
-  const routeRowOf = useCallback((t: { folder: string; title: string; targetWeek: number; completedAt?: string }): BoardRow => {
+  // la vista de la Ejecución la elige la barra lateral (ítems de `ejecucionLinks`) y se recuerda por plan
+  const [tabSel, setTabSel] = usePersistedNav<string>(runTabKey(plan.id), RUN_TAB_GENERAL);
+  const tab = tabSel === RUN_TAB_GENERAL || tabSel === RUN_TAB_RECORDS || tabSel === "practicas-diarias" || tabSel === "proyectos" || (tabSel === "bases" && (basesRows.length > 0 || hasBasesRoute)) || areaList.some((a) => [runAreaTab(a.subplanId), runAreaInteractiveTab(a.subplanId), runAreaInformativeTab(a.subplanId)].includes(tabSel)) ? tabSel : RUN_TAB_GENERAL;
+  const go = (id: string): void => setTabSel(id);
+  const areaTab = tab.startsWith("area:") ? areaList.find((a) => [runAreaTab(a.subplanId), runAreaInteractiveTab(a.subplanId), runAreaInformativeTab(a.subplanId)].includes(tab)) : undefined;
+  const isGeneral = tab === RUN_TAB_GENERAL;
+
+  // Aviso de constancia: lo atrasado y el ritmo que hace falta para llegar a la fecha de fin (solo en vista general).
+  const catchUp = useMemo(() => {
+    if (!isGeneral) return { remaining: 0, daysLeft: 0, perDay: 0, minutesPerDay: 0, capacityPerDay: 0 };
+    const study = m.schedule.days.filter((d) => d.study && d.date >= date && d.date <= plan.end);
+    const cap = study.length ? Math.round(study.reduce((n, d) => n + d.capacityMinutes, 0) / study.length) : 0;
+    return catchUpOf(m.schedule.days.map((d) => ({ date: d.date, study: d.study, topics: d.topics.map((t) => ({ folder: t.folder, title: t.title, minutes: t.minutes, done: t.done, area: t.area })) })), date, plan.end, (f) => m.topicByFolder.get(f)?.state === "completo", cap);
+  }, [isGeneral, m.schedule, m.topicByFolder, date, plan.end]);
+
+  // El reparto es POR AVANCE: solo se avisa lo que no cabe antes de fin (solo en vista general).
+  const overflow = useMemo(() => {
+    if (!isGeneral) return [];
+    const seen = new Map<string, { folder: string; title: string; area: string }>();
+    for (const d of m.schedule.days) for (const t of d.topics) if (t.overflow && !t.done && m.topicByFolder.get(t.folder)?.state !== "completo" && !seen.has(t.folder)) seen.set(t.folder, { folder: t.folder, title: t.title, area: t.area });
+    return [...seen.values()];
+  }, [isGeneral, m.schedule, m.topicByFolder]);
+
+  const routeRowOf = useCallback((t: { folder: string; title: string; targetWeek: number; completedAt?: string; revisionAddedAt?: string }): BoardRow => {
     const state = topicByFolder.get(t.folder)?.state ?? "sin_tratar";
     const isDone = state === "completo" || !!t.completedAt;
     const time = timeTagOf(times.get(t.folder), isDone, date, started);
-    return { ...(time ? { time } : {}), agendaDate: date, folder: t.folder, title: t.title, week: t.targetWeek, state, done: isDone, exercises: topicByFolder.get(t.folder)?.exercises ?? 0, pct: topicByFolder.get(t.folder)?.pct ?? 0, unlockOn: gate.locked.get(t.folder), ...(data.practiceOutdated?.[t.folder] ? { outdated: true } : {}) };
+    return { ...(time ? { time } : {}), agendaDate: date, folder: t.folder, revisionAddedAt: t.revisionAddedAt, found: topicByFolder.get(t.folder)?.found, title: t.title, week: t.targetWeek, state, done: isDone, exercises: topicByFolder.get(t.folder)?.exercises ?? 0, pct: topicByFolder.get(t.folder)?.pct ?? 0, unlockOn: gate.locked.get(t.folder), ...(data.practiceOutdated?.[t.folder] ? { outdated: true } : {}) };
   }, [topicByFolder, times, date, started, gate, data.practiceOutdated]);
+
+  // Cache por subplanId para que alternar pestañas o hacer clic en la vista no recalcule toda la ruta ni los repasos
+  const routeCache = useRef(new Map<string, BoardRow[]>());
+  const reviewsCache = useRef(new Map<string, ReviewRow[]>());
+  const weekDaysCache = useRef(new Map<string, WeekDayView[]>());
+  const upcomingCache = useRef(new Map<string, UpcomingWeekView[]>());
+
+  useEffect(() => {
+    routeCache.current.clear();
+    reviewsCache.current.clear();
+    weekDaysCache.current.clear();
+    upcomingCache.current.clear();
+  }, [plan, date, m.schedule, routeRowOf, reviewItems]);
+
   // la ruta de un área: su pertenencia sale de `areaRouteTopics` (sin fundamentos), igual que los totales de la Agenda
-  const routeOf = useCallback((subplanId: string): BoardRow[] => areaRouteTopics(plan, subplanId).map(routeRowOf), [plan, routeRowOf]);
+  const routeOf = useCallback((subplanId: string): BoardRow[] => {
+    const cached = routeCache.current.get(subplanId);
+    if (cached) return cached;
+    const res = areaRouteTopics(plan, subplanId).map(routeRowOf);
+    routeCache.current.set(subplanId, res);
+    return res;
+  }, [plan, routeRowOf]);
+
   // Repaso espaciado (el mismo calendario del módulo de estudio): los repasos de cada área, unidos con los temas del plan
-  const reviewsOf = useCallback((subplanId: string): ReviewRow[] => reviewsOfTopics(areaRouteTopics(plan, subplanId), reviewItems), [plan, reviewItems]);
+  const reviewsOf = useCallback((subplanId: string): ReviewRow[] => {
+    const cached = reviewsCache.current.get(subplanId);
+    if (cached) return cached;
+    const res = reviewsOfTopics(areaRouteTopics(plan, subplanId), reviewItems);
+    reviewsCache.current.set(subplanId, res);
+    return res;
+  }, [plan, reviewItems]);
+
   // la semana del área de aprendizaje se mide por el avance de la ruta (si no se ha completado nada, hoy es Semana 1)
   const learningWeekOf = useCallback((subplanId: string | null): number => {
     const topics = subplanId ? areaRouteTopics(plan, subplanId) : basesRouteTopics(plan);
@@ -212,8 +252,11 @@ export function PlanRun({ data, plan }: { data: Loaded; plan: MentorPlan }) {
 
   // la semana en curso día a día: ventana de 7 días de estudio desde hoy mostrando temas actuales y prediciendo siguientes
   const weekDaysOf = useCallback((subplanId: string | null): WeekDayView[] => {
+    const key = subplanId ?? "__bases__";
+    const cached = weekDaysCache.current.get(key);
+    if (cached) return cached;
     const endOfCurWeek = addDays(date, 6);
-    return m.schedule.days
+    const res = m.schedule.days
       .filter((d) => d.study && d.date >= date && d.date <= endOfCurWeek)
       .map((d) => {
         const seen = new Set<string>();
@@ -224,20 +267,25 @@ export function PlanRun({ data, plan }: { data: Loaded; plan: MentorPlan }) {
           seen.add(t.folder);
           rows.push(rowOf(t, subplanId === null, undefined, d.date));
         }
-        // la Semana enseña lo MISMO que la Agenda (Semana): cada día con sus temas repartidos, también los de días anteriores (lo no terminado va además a «Pendientes»)
         return { date: d.date, label: `${DAY_LONG[d.dow - 1] ?? ""} ${dateLabel(d.date)}`, rows };
       })
       .filter((d) => d.rows.length > 0 || d.date >= date);
+    weekDaysCache.current.set(key, res);
+    return res;
   }, [m.schedule, date, isBases, rowOf]);
 
-  // lo que viene: las semanas siguientes a la actual, por bloques de 7 días de estudio numeradas por avance
+  // lo que viene: las semanas siguientes a la actual, acotadas a 12 semanas máximo de proyección para evitar procesar todo el año
   const upcomingWeeksOf = useCallback((subplanId: string | null): UpcomingWeekView[] => {
+    const key = subplanId ?? "__bases__";
+    const cached = upcomingCache.current.get(key);
+    if (cached) return cached;
     const endOfCurWeek = addDays(date, 6);
     const futureDays = m.schedule.days.filter((d) => d.study && d.date > endOfCurWeek);
     const currentLrnWeek = learningWeekOf(subplanId);
     const out: UpcomingWeekView[] = [];
     const CHUNK_DAYS = 7;
-    for (let i = 0; i < futureDays.length; i += CHUNK_DAYS) {
+    const maxDays = Math.min(futureDays.length, CHUNK_DAYS * 12);
+    for (let i = 0; i < maxDays; i += CHUNK_DAYS) {
       const chunk = futureDays.slice(i, i + CHUNK_DAYS);
       const weekNum = currentLrnWeek + Math.floor(i / CHUNK_DAYS) + 1;
       const views = chunk
@@ -256,24 +304,23 @@ export function PlanRun({ data, plan }: { data: Loaded; plan: MentorPlan }) {
         .filter((d) => d.rows.length > 0);
       if (views.length) out.push({ week: weekNum, start: chunk[0]!.date, end: chunk[chunk.length - 1]!.date, days: views });
     }
+    upcomingCache.current.set(key, out);
     return out;
   }, [m.schedule, date, learningWeekOf, isBases, rowOf]);
-  const basesTopicList = useMemo(() => basesRouteTopics(plan), [plan]);
-  const basesRoute: BoardRow[] = useMemo(() => basesTopicList.map(routeRowOf).sort((a, b) => a.week - b.week), [basesTopicList, routeRowOf]);
-  const basesReviews = useMemo(() => reviewsOfTopics(basesTopicList, reviewItems), [basesTopicList, reviewItems]);
+
+  const basesTopicList = useMemo(() => (tab === "bases" ? basesRouteTopics(plan) : []), [plan, tab]);
+  const basesRoute: BoardRow[] = useMemo(() => (tab === "bases" ? basesTopicList.map(routeRowOf).sort((a, b) => a.week - b.week) : []), [basesTopicList, routeRowOf, tab]);
+  const basesReviews = useMemo(() => (tab === "bases" ? reviewsOfTopics(basesTopicList, reviewItems) : []), [basesTopicList, reviewItems, tab]);
   const planBuckets = useMemo(() => {
+    if (!isGeneral) return { today: [], week: [], nextWeek: [], later: [] };
     const allTopics = plan.subplans.flatMap((sp) => sp.topics.filter((t) => t.route !== "skipped").map((t) => ({ folder: t.folder, title: t.title })));
     return bucketReviews(reviewsOfTopics(allTopics, reviewItems), date);
-  }, [plan, reviewItems, date]);
+  }, [isGeneral, plan, reviewItems, date]);
 
   const [upSel, setUpSel] = useState("");
   const upDay = upcoming.find((d) => d.date === upSel) ?? upcoming[0];
-  const upCards = useMemo(() => (upDay ? cardsOf(dayByArea(plan, upDay, m.dueByDate.get(upDay.date) ?? []), true) : []), [upDay, plan, m.dueByDate, cardsOf]);
-  // la vista de la Ejecución la elige la barra lateral (ítems de `ejecucionLinks`) y se recuerda por plan
-  const [tabSel, setTabSel] = usePersistedNav<string>(runTabKey(plan.id), RUN_TAB_GENERAL);
-  const tab = tabSel === RUN_TAB_GENERAL || tabSel === RUN_TAB_RECORDS || tabSel === "proyectos" || (tabSel === "bases" && (basesRows.length > 0 || hasBasesRoute)) || areaList.some((a) => [runAreaTab(a.subplanId), runAreaInteractiveTab(a.subplanId), runAreaInformativeTab(a.subplanId)].includes(tabSel)) ? tabSel : RUN_TAB_GENERAL;
-  const go = (id: string): void => setTabSel(id);
-  const areaTab = tab.startsWith("area:") ? areaList.find((a) => [runAreaTab(a.subplanId), runAreaInteractiveTab(a.subplanId), runAreaInformativeTab(a.subplanId)].includes(tab)) : undefined;
+  const upCards = useMemo(() => (isGeneral && upDay ? cardsOf(dayByArea(plan, upDay, m.dueByDate.get(upDay.date) ?? []), true) : []), [isGeneral, upDay, plan, m.dueByDate, cardsOf]);
+
   // lo pesado de cada vista se calcula solo cuando esa vista está abierta (y no al cambiar de pestaña o de modo)
   const areaView = useMemo(() => {
     if (!areaTab) return undefined;
@@ -290,15 +337,19 @@ export function PlanRun({ data, plan }: { data: Loaded; plan: MentorPlan }) {
   const excess = planned - capacity;
   const loggedToday = minutesOn(timeEntries, date);
   const lateMinutes = useMemo(() => {
+    if (!isGeneral) return new Map<string, number>();
     const out = new Map<string, number>();
     for (const d of m.schedule.days) for (const t of d.topics) if (!t.done) out.set(t.folder, (out.get(t.folder) ?? 0) + t.minutes);
     return out;
-  }, [m.schedule]);
+  }, [isGeneral, m.schedule]);
   // tarjetas plegables de hoy: las áreas con temas o práctica y, aparte, los fundamentos (Bases)
-  const todayFolds: FoldItem[] = useMemo(() => [
-    ...cards.filter((c) => c.rows.length > 0 || c.entry.practiceMinutes > 0).map(foldItemOf),
-    ...(basesRows.length ? [{ key: "bases", name: "Bases", colour: "var(--nv-accent)", rows: basesRows, minutes: basesRows.reduce((n, r) => n + (r.minutes ?? 0), 0) }] : []),
-  ], [cards, basesRows]);
+  const todayFolds: FoldItem[] = useMemo(() => {
+    if (!isGeneral) return [];
+    return [
+      ...cards.filter((c) => c.rows.length > 0 || c.entry.practiceMinutes > 0).map(foldItemOf),
+      ...(basesRows.length ? [{ key: "bases", name: "Bases", colour: "var(--nv-accent)", rows: basesRows, minutes: basesRows.reduce((n, r) => n + (r.minutes ?? 0), 0) }] : []),
+    ];
+  }, [isGeneral, cards, basesRows]);
   // «Hoy» es EXACTAMENTE lo que la Agenda reparte hoy (sin sustituirlo por lo atrasado): lo atrasado va a «Pendientes» de cada área.
   const hoyFolds = todayFolds;
   const pendingToday = hoyFolds.flatMap((f) => f.rows).filter((r) => !r.done);
@@ -316,6 +367,32 @@ export function PlanRun({ data, plan }: { data: Loaded; plan: MentorPlan }) {
     return { area: a.area, subplanId: sp?.id, planId: plan.id, colour: focusColour(sp?.areaId), topics: topics.map((t) => ({ folder: t.folder, title: t.title })), minutes: Math.round(topics.reduce((n, t) => n + (lateMinutes.get(t.folder) ?? 0), 0)) };
   });
 
+  if (tab === "practicas-diarias") return <DailyAreaPractice plan={plan} data={data} m={m} practice={ap} onProjects={() => go("proyectos")} />;
+
+  if (areaTab && areaView && tab === runAreaInteractiveTab(areaTab.subplanId)) {
+    const subplan = plan.subplans.find((s) => s.id === areaTab.subplanId);
+    const topics = areaRouteTopics(plan, areaTab.subplanId);
+    const interactiveRows = topics.map(routeRowOf);
+    const topicGroups = new Map(topics.map((topic) => [topic.folder, topic.group]));
+    const sections: { area: string; rows: BoardRow[]; startDay?: number; nodeDays?: (number | undefined)[] }[] = [];
+    const scheduledDay = new Map<string, number>();
+    m.schedule.days.forEach((day, index) => day.topics.forEach((topic) => {
+      if (!scheduledDay.has(topic.folder)) scheduledDay.set(topic.folder, index);
+    }));
+    for (const row of interactiveRows) {
+      const group = subplan?.groups?.find((g) => g.id === topicGroups.get(row.folder));
+      const title = group?.title ?? (subplan?.groups?.some((g) => g.kind !== "bases") ? "Otros temas" : areaTab.area);
+      const existing = sections.find((s) => s.area === title);
+      if (existing) existing.rows.push(row);
+      else sections.push({ area: title, rows: [row] });
+    }
+    for (const section of sections) {
+      section.nodeDays = section.rows.map((row) => scheduledDay.get(row.folder));
+      const days = section.nodeDays.filter((day): day is number => day !== undefined);
+      if (days.length) section.startDay = Math.min(...days);
+    }
+    return <InteractiveRoute area={areaTab.area} rows={interactiveRows} routes={sections} onInformative={() => go(runAreaInformativeTab(areaTab.subplanId))} />;
+  }
   return (
     <div className="space-y-6 pb-4" data-testid="plan-run">
       <VaultSyncBanner planId={plan.id} />
@@ -532,9 +609,7 @@ export function PlanRun({ data, plan }: { data: Loaded; plan: MentorPlan }) {
         </div>
       )}
 
-      {areaTab && areaView && tab === runAreaInteractiveTab(areaTab.subplanId) && <InteractiveRoute area={areaTab.area} rows={areaView.routeRows} onInformative={() => go(runAreaInformativeTab(areaTab.subplanId))} />}
-
-      {areaTab && areaView && tab !== runAreaInteractiveTab(areaTab.subplanId) && (
+      {areaTab && areaView && (
         <RunArea
           plan={plan}
           area={areaTab}

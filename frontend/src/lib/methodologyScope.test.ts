@@ -23,15 +23,15 @@ describe("methodologyScope", () => {
 
   it("el prompt lleva las reglas, los temas y el formato de respuesta", () => {
     const p = reviewPrompt({ kind: "group", label: "CSS" }, [{ folder: "P/5/5.2 CSS", title: "CSS", group: "css" }]);
-    expect(p).toContain("ONE topic per element");
+    expect(p).toContain("learning methodology appropriate to the subject");
     expect(p).toContain("- CSS [css] (P/5/5.2 CSS)");
-    expect(p).toContain("Topics to split");
+    expect(p).toContain("Practice, feedback and assessment");
+    expect(p).toContain("do not audit or reorder the plan");
   });
 });
 
 describe("orden que devuelve la IA", () => {
-  it("el prompt exige el bloque json y lo lee la app", () => {
-    expect(reviewPrompt({ kind: "group", label: "HTML" }, [{ folder: "P/H/5.18.4 S", title: "S" }])).toContain("Machine-readable order");
+  it("la lectura de orden sigue disponible para otros flujos", () => {
     expect(parseOrderReply('Texto…\n```json\n{ "order": ["a/b", "c/d"], "missing": ["x"] }\n```\n')).toEqual(["a/b", "c/d"]);
     expect(parseOrderReply("sin bloque")).toBeNull();
     expect(parseOrderReply('```json\n{ "order": [] }\n```')).toBeNull();

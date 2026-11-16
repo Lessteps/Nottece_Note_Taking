@@ -189,7 +189,7 @@ describe("PlanAreaTopics — panel desplegable «Regenerar»", () => {
     const text = byTest("regen-dialog")!.textContent!;
     expect(text).toContain("REEMPLAZAR");
     expect(text).toContain("copia de seguridad");
-    expect(text).toContain(".nuevo.canvas");
+    expect(text).toContain(".trash");
     await click("regen-cancel");
     expect(byTest("regen-dialog")).toBeNull();
     expect(start).not.toHaveBeenCalled();

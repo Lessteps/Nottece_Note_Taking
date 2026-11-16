@@ -3,6 +3,12 @@ import { contextBridge, ipcRenderer } from "electron";
 // The ONLY thing exposed to the renderer. Mirrors window.pywebview.api's shape.
 contextBridge.exposeInMainWorld("nv", {
   invoke: (method: string, args: unknown[]) => ipcRenderer.invoke("nv", method, args),
+  setInteractiveRouteActive: (active: boolean) => ipcRenderer.send("nv-interactive-route-active", active),
+  onInteractiveRouteZoom: (cb: (action: "in" | "out") => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, action: "in" | "out") => cb(action);
+    ipcRenderer.on("nv-interactive-route-zoom", handler);
+    return () => ipcRenderer.removeListener("nv-interactive-route-zoom", handler);
+  },
   onWatchEvent: (cb: (data: { eventType: string; relPath: string; fullPath: string }) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, data: any) => cb(data);
     ipcRenderer.on("vault-watch-event", handler);

@@ -138,6 +138,7 @@ const [storedView, setView] = usePersistedNav("ejercicio.view", "general");
         title="Ejercicio"
         active={view}
         collapsible
+        hideChildrenOnCollapse={false}
         collapsed={sidebarCollapsed}
         onToggleCollapsed={() => setSidebarCollapsed((v) => !v)}
         onSelect={(id) => {

@@ -2,6 +2,7 @@
 // de pestañas (General · una por área · Bases · Proyectos) y cada pestaña enseña SOLO lo suyo: la de un área, lo que toca hoy en esa área, su sesión
 // (Pomodoro y registro de horas) y su ruta; la de Bases, los fundamentos que se intercalan en todas las áreas (no son de ninguna ruta en concreto).
 
+import { memo, useMemo } from "react";
 import { ArrowRight } from "lucide-react";
 import type { MentorPlan } from "../../lib/types";
 import type { DayAreaEntry } from "../../lib/planTopicsByArea";
@@ -34,7 +35,7 @@ export interface TodayCard {
 export const areaDefaultWork = (o: { pendingTopics: boolean; project: boolean }): "theory" | "practice" | "project" => (o.pendingTopics ? "theory" : o.project ? "project" : "practice");
 
 /** La pestaña de un área: su trabajo (hoy, semana, pendientes, repasos) a la izquierda y su sesión (Pomodoro y horas) a la derecha. */
-export function RunArea({ plan, area, card, routeRows, weekDays, upcoming, sets, reviews, date, practice, dailyProject, weeklyProjectTitle, onGoProjects, weekNumber }: {
+export const RunArea = memo(function RunArea({ plan, area, card, routeRows, weekDays, upcoming, sets, reviews, date, practice, dailyProject, weeklyProjectTitle, onGoProjects, weekNumber }: {
   plan: MentorPlan;
   area: { subplanId: string; areaId?: string; area: string };
   card: TodayCard | undefined;
@@ -60,7 +61,10 @@ export function RunArea({ plan, area, card, routeRows, weekDays, upcoming, sets,
   const planned = card ? card.entry.theoryMinutes + card.entry.practiceMinutes : 0;
   const current = card?.rows.find((r) => !r.done)?.title;
   const toast = useApp.getState().toast;
-  const dailySections = dailyProject ? dailyBreakdown(area.areaId ? [area.areaId] : [], card?.rows.length ? card.rows.map((r) => r.title) : dailyProject.topics.map((t: { title: string }) => t.title)) : [];
+  const dailySections = useMemo(
+    () => (dailyProject ? dailyBreakdown(area.areaId ? [area.areaId] : [], card?.rows.length ? card.rows.map((r) => r.title) : dailyProject.topics.map((t: { title: string }) => t.title)) : []),
+    [dailyProject, area.areaId, card?.rows]
+  );
   return (
     <div className="grid items-start gap-6 @4xl:grid-cols-[minmax(0,1fr)_24rem]" data-testid="run-area-tab" data-area={areaKey}>
       <div className="min-w-0 space-y-4">
@@ -132,10 +136,10 @@ export function RunArea({ plan, area, card, routeRows, weekDays, upcoming, sets,
       </div>
     </div>
   );
-}
+});
 
 /** La pestaña de Bases: los fundamentos que se intercalan en todas las áreas. Los temas se juntan sin repetirse. */
-export function RunBases({ plan, routeRows, todayRows, weekDays, upcoming, sets, reviews, date }: {
+export const RunBases = memo(function RunBases({ plan, routeRows, todayRows, weekDays, upcoming, sets, reviews, date }: {
   plan: MentorPlan;
   routeRows: BoardRow[];
   todayRows: BoardRow[];
@@ -170,4 +174,4 @@ export function RunBases({ plan, routeRows, todayRows, weekDays, upcoming, sets,
       <AreaSession planId={plan.id} areaKey="bases" areaName="Bases" date={date} plannedMinutes={0} colour={colour} defaultWork="theory" {...(current ? { currentTopic: current } : {})} />
     </div>
   );
-}
+});

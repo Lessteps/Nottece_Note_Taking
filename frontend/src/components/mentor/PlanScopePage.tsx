@@ -198,16 +198,20 @@ export function PlanScopePage(props: PlanScopePageProps) {
   const weeks = Math.round(((Date.parse(dates.end) - Date.parse(dates.start)) / 86400000 + 1) / 7 * 10) / 10;
   const currentWeek = summary0?.currentWeek ?? week;
   const aState = scope.kind === "all" ? null : areaState(plan, scope, progress, currentWeek);
+  const areaTopics = scope.kind === "area" ? plan.subplans.find((sub) => sub.id === scope.subplanId)?.topics ?? [] : [];
+  const attempts = areaTopics.map((topic) => m.topicByFolder.get(topic.folder)?.lastAttemptAt).filter((value): value is string => !!value).sort();
+  const latestAttempt = attempts[attempts.length - 1];
+  const worked = areaTopics.some((topic) => !!topic.completedAt || ["practicando", "consolidado", "completo", "examen_pendiente"].includes(m.topicByFolder.get(topic.folder)?.state ?? ""));
+  const elapsed = latestAttempt ? (Date.now() - Date.parse(latestAttempt)) / 86400000 : 0;
+  const activityState = !worked && !latestAttempt ? "Pendiente" : latestAttempt && elapsed >= 3 ? "Abandonada" : "En curso";
   const planLive = state === "activo";
   const stateChip =
     scope.kind === "all" || !planLive ? (
       <Chip large colour={STATUS_COLOUR[state]}>{plan.proposed ? "Propuesto" : plan.archived ? "Archivado" : STATUS_LABEL[state]}</Chip>
     ) : aState === "completo" ? (
       <Chip large colour="var(--nv-mint)">Completo</Chip>
-    ) : aState === "proximo" ? (
-      <Chip large colour="var(--nv-accent)">Próximo</Chip>
     ) : (
-      <Chip large colour="var(--nv-mint)">Activo</Chip>
+      <Chip large colour={activityState === "Abandonada" ? "var(--nv-warn)" : "var(--nv-accent)"}>{activityState}</Chip>
     );
   const pending = overall ? overall.total - overall.done : progress.pending;
   const areas = activeAreas(plan, currentWeek);
@@ -245,20 +249,6 @@ export function PlanScopePage(props: PlanScopePageProps) {
     }
   };
 
-  const handleAreaStateChange = async (st: "en_curso" | "pendiente" | "completada") => {
-    if (!activeSubplan) return;
-    try {
-      const res = await api.mentorPlanAreaUpdate({
-        planId: plan.id,
-        subplanId: activeSubplan.id,
-        state: st,
-      });
-      onChanged(res.plan);
-      announce(`Estado de ${info.title} cambiado a ${st}`);
-    } catch (err: any) {
-      announce(err?.message || "No se pudo cambiar el estado del área");
-    }
-  };
 
   return (
     <div className="space-y-5 pt-4 min-w-0 max-w-full" data-testid="plan-agenda" data-scope={key}>
@@ -272,28 +262,11 @@ export function PlanScopePage(props: PlanScopePageProps) {
       />
       <header data-testid="plan-head" className="space-y-3">
         <h1 id="plan-title" tabIndex={-1} className="font-serif text-[34px] font-bold leading-tight tracking-tight outline-none @3xl:text-[44px]" data-testid="plan-page-title">{info.title}</h1>
+        {activeSubplan?.learningGuide && <details className="rounded-xl border border-line bg-card px-4 py-3" data-testid="learning-guide"><summary className="cursor-pointer font-semibold text-accent-text">Guía de aprendizaje de {activeSubplan.area}</summary><p className="mt-2 text-sm leading-relaxed text-dim">{activeSubplan.learningGuide}</p><p className="mt-2 text-xs text-faint">Esta guía se incluye al generar los contenidos de los temas de esta área.</p></details>}
         <dl className="divide-y divide-line py-1" aria-label="Propiedades" data-testid="plan-props">
           <Prop label="Estado" testid="prop-state">
             {stateChip}
-            {scope.kind === "area" && (
-              <select
-                aria-label={`Cambiar estado de ${info.title}`}
-                defaultValue=""
-                onChange={(e) => {
-                  if (e.target.value) {
-                    void handleAreaStateChange(e.target.value as any);
-                    e.target.value = "";
-                  }
-                }}
-                className="ml-2 rounded-md border border-line bg-surface px-2 py-0.5 text-xs text-dim focus:outline-none"
-                data-testid="select-area-state"
-              >
-                <option value="" disabled>Modificar estado…</option>
-                <option value="en_curso">En curso</option>
-                <option value="pendiente">Pendiente</option>
-                <option value="completada">Completada</option>
-              </select>
-            )}
+
             {plan.auto && scope.kind === "all" && <Chip large colour="var(--nv-warn)">Plan automático</Chip>}
           </Prop>
           <Prop label="Fechas" testid="prop-dates">

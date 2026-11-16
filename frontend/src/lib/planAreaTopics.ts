@@ -33,6 +33,7 @@ export interface AreaTopicRow {
   week: number;
   group: string;
   completed: boolean;
+  revisionAddedAt?: string;
   route: "core" | "optional" | "skipped";
   /** lo que existe; sin fila de catálogo (tema del plan que aún no está en la vault) todo es «falta» */
   exists: boolean;
@@ -99,6 +100,7 @@ export function areaTopicRows(sub: MentorSubplan, catalog: ReadonlyArray<PlanTop
         week: so?.week ?? t.targetWeek,
         group: t.group ?? "",
         completed: !!t.completedAt,
+        ...(t.revisionAddedAt ? { revisionAddedAt: t.revisionAddedAt } : {}),
         route: routeOf(t.route),
         exists: !!c?.exists,
         theory: !!c?.theory,

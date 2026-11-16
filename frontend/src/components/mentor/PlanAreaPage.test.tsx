@@ -106,6 +106,14 @@ afterEach(() => {
 });
 
 describe("página de un área", () => {
+  it("muestra la guía pedagógica guardada del área", async () => {
+    const p = areasPlan();
+    p.subplans.find((s) => s.id === "s1-backend")!.learningGuide = "Empezar desde cero";
+    await open(p);
+    await click(nav("area/s1-backend"));
+    expect(byTest("learning-guide").textContent).toContain("Empezar desde cero");
+    expect(byTest("learning-guide").textContent).toContain("se incluye al generar");
+  });
   it("cabecera: título grande, propiedades (Estado, Fechas, Progreso), la nota de práctica con el Mentor y las pestañas del área", async () => {
     await open();
     await click(nav("area/s1-backend"));
@@ -114,7 +122,7 @@ describe("página de un área", () => {
     expect(byTest("plan-page-title").textContent).toBe("Backend");
     const props = byTest("plan-props").textContent!;
     expect(props).toContain("Estado");
-    expect(props).toContain("Activo");
+    expect(props).toContain("Pendiente"); // el área de prueba todavía no tiene actividad
     expect(props).toContain("Fechas");
     expect(props).toMatch(/5 oct 2026 – \d+ \w+ 2027?/); // las fechas del PLAN, no las de la fase del área
     expect(props).toMatch(/\d+(,\d)? semanas/);

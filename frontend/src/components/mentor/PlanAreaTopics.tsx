@@ -1,3 +1,4 @@
+import { ScopePlanReview } from "./ScopePlanReview";
 // Mentor — Plan, sub-vista «Temas por área»: una sub-barra con TODAS las áreas del plan (se actualiza sola con el plan) y, dentro de cada área,
 // otra sub-barra con sus grupos (Bases, Lenguaje, Conocimientos…) y la tabla de sus temas en el orden de la ruta, con lo que existe de cada uno
 // y el botón «Generar todo». Sustituye a las tarjetas: la información es la misma que la del catálogo, pero ordenada por área.
@@ -40,7 +41,6 @@ import { areaScope, GenerateButton, GenerateTopicButton, topicScope } from "./To
 import { TopicInsight } from "./TopicInsight";
 import { RegeneratePanel } from "./TopicRegenerate";
 import { AddToPlanDialog } from "./AddToPlanDialog";
-import { MethodologyCheckButton } from "./MethodologyCheck";
 import { PlanReviewScreen } from "./PlanReviewScreen";
 import type { PlanReview } from "../../lib/types";
 
@@ -130,7 +130,7 @@ function TabBar<T extends { key: string; label: string; hint?: string; hintLabel
           checkScroll();
         }}
         className={cn(
-          "flex gap-1 overflow-x-auto py-1 scroll-smooth [scrollbar-width:thin] [scrollbar-color:var(--nv-line-strong)_transparent]",
+          "flex gap-1 overflow-x-auto py-1 scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
           level === 1 ? "border-b border-line" : "",
         )}
       >
@@ -461,8 +461,8 @@ export function PlanAreaTopics({ plan, schedule, today, started, progress, only 
   };
 
   // «Agregar nuevos temas» + «Verificar metodología» del alcance donde estás (la asignatura, o el área si no hay asignaturas); arriba y abajo de la tabla
-  const realGroup = Boolean(group && group.id && group.id !== "bases" && group.id !== "core" && group.id !== "__otros");
-  const scopeTopics = useMemo(() => shown.map((r) => ({ folder: r.folder, title: r.title, group: r.group })), [shown]);
+  const planReviewGroup = sub?.groups?.some((g) => g.id === group?.id) ? group?.id : undefined;
+  const planReviewTopics = (sub?.topics ?? []).filter((t) => t.route !== "skipped" && (!planReviewGroup || t.group === planReviewGroup)).map((t) => ({ folder: t.folder, title: t.title, group: t.group }));
   const addTopicsBar = (testid: string) => (
     <div className="flex flex-wrap items-center gap-2">
       <button
@@ -473,14 +473,8 @@ export function PlanAreaTopics({ plan, schedule, today, started, progress, only 
       >
         <Plus size={15} aria-hidden /> Agregar nuevos temas...
       </button>
-      {active && (
-        <MethodologyCheckButton
-          scope={realGroup && group ? { kind: "group", label: group.title, areaName: active.area, groupId: group.id, groupTitle: group.title } : { kind: "area", label: active.area, areaName: active.area }}
-          topics={scopeTopics}
-          testid={`${testid}-methodology`}
-          planId={plan.id}
-        />
-      )}
+
+      {active && sub && <ScopePlanReview planId={plan.id} subplanId={sub.id} groupId={planReviewGroup} title={planReviewGroup && group ? group.title : active.area} objective={sub.objective} topics={planReviewTopics} plan={plan} />}
     </div>
   );
 
@@ -871,7 +865,7 @@ export function PlanAreaTopics({ plan, schedule, today, started, progress, only 
                         </button>
                         <span className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-1.5">
-                            <TopicMenu folder={r.folder} title={r.title} trigger={<span className="block whitespace-normal break-words text-left" title={r.folder} data-testid="area-open">{r.title}</span>} className="font-semibold text-accent-text underline-offset-2 hover:underline" />
+                            <TopicMenu folder={r.folder} title={r.title} trigger={<span className="block whitespace-normal break-words text-left" title={r.folder} data-testid="area-open">{r.title}</span>} className="font-semibold text-accent-text underline-offset-2 hover:underline" />{r.revisionAddedAt && <span className="ml-2 rounded-full border border-mint/40 bg-mint/10 px-2 py-0.5 text-[10px] font-semibold text-mint" title={`Añadido en la revisión ${r.revisionAddedAt}`}>Nuevo</span>}
                             {sub && groups.length > 1 && (
                               <select
                                 value={r.group || "core"}

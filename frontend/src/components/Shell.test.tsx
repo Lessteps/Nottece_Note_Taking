@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { MenuHost } from "./ui";
-import { isBrowserTab, StatusBar, TopBar } from "./Shell";
+import { IconRail, isBrowserTab, StatusBar, TopBar } from "./Shell";
 import { useVaultDialog } from "./VaultDialog";
 import { useApp } from "../store/app";
 
@@ -231,5 +231,48 @@ describe("StatusBar", () => {
     useVaultDialog.setState({ open: false });
     act(() => vault!.click());
     expect(useVaultDialog.getState().open).toBe(true);
+  });
+});
+
+describe("IconRail", () => {
+  it("renders collapsed initially and expands to Notion sidebar on toggle", () => {
+    useApp.setState({ explorerOpen: false });
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const root = createRoot(el);
+    act(() => {
+      root.render(<IconRail />);
+    });
+
+    // The redundant >> button inside the collapsed rail has been removed
+    const expandBtn = el.querySelector<HTMLButtonElement>('button[aria-label="Desplegar barra lateral"]');
+    expect(expandBtn).toBeNull();
+    expect(el.textContent).not.toContain("Módulos del Sistema");
+
+    // Toggling explorerOpen (via top-left PanelLeft button or shortcut) expands it
+    act(() => {
+      useApp.getState().toggleExplorer();
+    });
+
+    act(() => {
+      root.render(<IconRail />);
+    });
+
+    expect(el.textContent).toContain("Módulos del Sistema");
+
+    // Collapsing via top bar toggle
+    act(() => {
+      useApp.getState().toggleExplorer();
+    });
+
+    act(() => {
+      root.render(<IconRail />);
+    });
+
+    expect(el.textContent).not.toContain("Módulos del Sistema");
+    act(() => {
+      root.unmount();
+    });
+    document.body.removeChild(el);
   });
 });

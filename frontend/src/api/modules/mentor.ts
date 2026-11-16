@@ -10,12 +10,11 @@ import * as store from "../../core/store.js";
 import { AIConfig, sendChat, type ChatMessage, type SendOpts } from "../../core/aiClient.js";
 import { CORE_GROUP_ID, evaluateAreaMethodology, FRONTEND_SUBJECT_GROUPS, frontendGroupForFolder } from "../../lib/planAreas.js";
 import { ApiError } from "../../core/errors.js";
-import { examSlug, listExamRecords } from "../../core/practice/exams.js";
 import { loadAllAttempts } from "../../core/practice/ledger.js";
-import { cachedTopicSnaps, clearTopicSnapCache } from "./topicSnapCache.js";
+import { clearTopicSnapCache } from "./topicSnapCache.js";
+import { topicSnaps } from "./topicSnapshots.js";
 import { outdatedByFolder } from "./skillFreshness.js";
 import { hubSnapshot } from "../../core/practice/recommender.js";
-import { manifestsFromNotes, type TopicManifest } from "../../core/practice/topic.js";
 import { FILTER_ACTIVE, ITEM_DONE } from "../../core/goalManager.js";
 import { allocate, buildCandidates } from "../../core/mentor/candidates.js";
 import { buildPracticeTrack, practiceDayMinutes, practiceItemsFor, sanitizePracticeTrack, suggestionsOf, type PracticeItem } from "../../lib/practiceTrack.js";
@@ -125,7 +124,6 @@ import {
 import { buildStudentBrief, toPromptText, type BriefContext, type QueueHint } from "../../core/mentor/brief.js";
 import { adherence, BLOCK_STATUSES, sanitizeSession, SessionLog, type BlockStatus } from "../../core/mentor/sessionLog.js";
 import { aiUnavailableReason, planToBlocks, proposePlan, type ProposedBlock, type SendFn } from "../../core/mentor/planner.js";
-import { snapshotTopics, type TopicSnap } from "../../core/mentor/topics.js";
 import { ChatStore, pendingDraft, type ChatLog, type ChatTurnRecord } from "../../core/mentor/chatLog.js";
 import {
   buildTopicCatalog,
@@ -212,47 +210,6 @@ export function clearTopicSnapsCache(): void {
   clearTopicSnapCache();
 }
 registerScanInvalidation(clearTopicSnapsCache);
-
-/**
- * Foto de todos los temas de la vault (misma fuente que `study_topic_dashboard`). Se reutiliza mientras no cambien el escaneo de la vault ni los
- * intentos y exámenes en disco (ver `topicSnapCache.ts`): el Mentor la pide en cada cambio de vista.
- */
-function topicSnaps(app: AppState): TopicSnap[] {
-  const scan = vaultScan(app);
-  return cachedTopicSnaps(app.root, scan, () => buildTopicSnaps(app, scan)).slice();
-}
-
-function buildTopicSnaps(app: AppState, scan: ReturnType<typeof vaultScan>): TopicSnap[] {
-  const byFolder = new Map<string, { folder: string; manifest: TopicManifest }>();
-  for (const found of manifestsFromNotes(scan.notes)) {
-    const folder = app.rel(found.topicFolder).replace(/\\/g, "/");
-    if (!byFolder.has(folder)) {
-      byFolder.set(folder, { folder, manifest: { ...found.manifest, path: app.rel(found.manifestPath), folder } });
-    }
-  }
-  const examMap = new Map<string, any>();
-  for (const rec of listExamRecords(app.root)) {
-    examMap.set(examSlug(rec.topic_or_group), rec);
-  }
-  const examFor = (manifest: TopicManifest) => {
-    const byTitle = examMap.get(examSlug(manifest.title));
-    if (byTitle?.passed) return byTitle;
-    if (manifest.exam_group) {
-      const byGroup = examMap.get(examSlug(manifest.exam_group));
-      if (byGroup?.passed) return byGroup;
-      if (byGroup && !byTitle) return byGroup;
-    }
-    return byTitle ?? null;
-  };
-  const snaps = snapshotTopics({
-    manifests: [...byFolder.values()],
-    exercises: scan.exercises,
-    attempts: loadAllAttempts(app.root),
-    noteRels: scan.notes.map((n) => n.rel),
-    examFor,
-  });
-  return snaps;
-}
 
 /** Lo MEDIDO de cada tema (progreso e intentos reales de la vault): calibra los proyectos de tema y «Reducir a lo esencial». */
 function masteryLookup(app: AppState): MasteryLookup {
@@ -1586,6 +1543,36 @@ export function mentorApi(app: AppState, send?: SendFn) {
      * vez) la fecha de los temas que ya están completos: es el registro de temas completados. `items` es lo que
      * toca hoy en TODOS los planes activos.
      */
+    mentor_scope_review(opts: unknown) {
+      const o = (opts && typeof opts === "object" ? opts : {}) as Record<string, unknown>;
+      const planId = String(o.planId ?? ""), subplanId = String(o.subplanId ?? ""), groupId = String(o.groupId ?? "");
+      if (!PLAN_ID_RE.test(planId)) throw new ApiError("Plan inválido.");
+      const plan = new PlanStore(app.root).load(planId);
+      const subplan = plan?.subplans.find((s) => s.id === subplanId);
+      if (!subplan || (groupId && !subplan.groups?.some((g) => g.id === groupId))) throw new ApiError("Área o asignatura inválida.");
+      const key = Buffer.from(`${subplanId}\0${groupId}`).toString("base64url");
+      const dir = path.join(app.root, ".notevault", "mentor", "scope-reviews", planId);
+      const file = path.join(dir, `${key}.json`);
+      let previous: { methodology?: string; updatedAt?: string; planReview?: string; planUpdatedAt?: string } = {};
+      try { previous = JSON.parse(fs.readFileSync(file, "utf8")); } catch { /* sin revisión */ }
+      if (typeof o.methodology === "string") {
+        const methodology = o.methodology.trim();
+        if (!methodology || methodology.length > 50000) throw new ApiError("Escribe una revisión de metodología válida.");
+        fs.mkdirSync(dir, { recursive: true });
+        previous = { ...previous, methodology, updatedAt: new Date().toISOString() };
+        fs.writeFileSync(file, JSON.stringify(previous, null, 2), "utf8");
+      }
+      if (typeof o.planReview === "string") {
+        if (!previous.methodology) throw new ApiError("Verifica primero la metodología.");
+        const planReview = o.planReview.trim();
+        if (!planReview || planReview.length > 100000) throw new ApiError("Escribe un plan revisado válido.");
+        fs.mkdirSync(dir, { recursive: true });
+        previous = { ...previous, planReview, planUpdatedAt: new Date().toISOString() };
+        fs.writeFileSync(file, JSON.stringify(previous, null, 2), "utf8");
+      }
+      return previous;
+    },
+
     mentor_plan_get(opts: unknown) {
       const o = (opts && typeof opts === "object" ? opts : {}) as Record<string, any>;
       const today = localDate();

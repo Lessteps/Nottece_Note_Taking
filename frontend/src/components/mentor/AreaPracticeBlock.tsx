@@ -21,7 +21,7 @@ import { RowMenu, type MenuAction } from "./RowMenu";
 
 const VISIBLE = 3;
 
-function KataRow({ planId, area, d, mark }: { planId: string; area: AreaPracticeView; d: AreaKataDue; mark: AreaPracticeState["mark"] }) {
+function KataRow({ planId, area, d, mark, showDates = true }: { planId: string; area: AreaPracticeView; d: AreaKataDue; mark: AreaPracticeState["mark"]; showDates?: boolean }) {
   const toast = useApp((s) => s.toast);
   const colour = focusColour(area.areaId);
   const done = d.state === "done";
@@ -62,18 +62,18 @@ function KataRow({ planId, area, d, mark }: { planId: string; area: AreaPractice
       <span className={cn("min-w-0 flex-1 text-[15px] leading-snug", (done || d.state === "skipped") && "text-faint line-through decoration-faint/60")}>
         {d.title}
         <span className="block text-[13.5px] font-normal text-dim">
-          {d.skillName} · {KATA_LEVEL_LABEL[d.level]} · {d.minutes} min · {d.today ? "hoy" : dateLabel(d.date)}
+          {d.skillName} · {KATA_LEVEL_LABEL[d.level]} · {d.minutes} min{showDates ? ` · ${d.today ? "hoy" : dateLabel(d.date)}` : ""}
           {d.state === "skipped" ? " · saltado" : ""}
         </span>
       </span>
-      {late && <span className="flex-none rounded-md border border-warn/60 px-1.5 py-0.5 font-mono text-[11px] font-semibold uppercase tracking-wide text-warn">Atrasado</span>}
+      {late && showDates && <span className="flex-none rounded-md border border-warn/60 px-1.5 py-0.5 font-mono text-[11px] font-semibold uppercase tracking-wide text-warn">Atrasado</span>}
       <RowMenu title={d.title} items={items} />
     </li>
   );
 }
 
 /** El bloque de práctica de un área: contador, lista de katas por hacer y el siguiente si hoy no toca. */
-export function AreaPracticeBlock({ planId, area, mark, extra }: { planId: string; area: AreaPracticeView; mark: AreaPracticeState["mark"]; /** la práctica extra del día y «Añadir práctica» */ extra?: ReactNode }) {
+export function AreaPracticeBlock({ planId, area, mark, extra, showDates = true }: { planId: string; area: AreaPracticeView; mark: AreaPracticeState["mark"]; showDates?: boolean; /** la práctica extra del día y «Añadir práctica» */ extra?: ReactNode }) {
   const [all, setAll] = useState(false);
   const colour = focusColour(area.areaId);
   const pending = area.kata.due.filter((d) => d.state !== "done").length;
@@ -88,7 +88,7 @@ export function AreaPracticeBlock({ planId, area, mark, extra }: { planId: strin
       <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1">
         <h3 className="text-[16px] font-bold" style={{ color: colour }}>Práctica diaria</h3>
         <span className="text-[14px] text-dim" data-testid="area-practice-count">
-          {pending > 0 ? `${pending} ${pending === 1 ? "reto por hacer" : "retos por hacer"}` : area.kata.todayPlanned ? "al día" : "hoy no toca"}
+          {pending > 0 ? `${pending} ${pending === 1 ? "reto por hacer" : "retos por hacer"}` : !showDates ? "sin retos pendientes" : area.kata.todayPlanned ? "al día" : "hoy no toca"}
           {area.kata.streak > 0 ? ` · racha ${area.kata.streak}` : ""}
         </span>
         <span className="flex-1" />
@@ -99,8 +99,8 @@ export function AreaPracticeBlock({ planId, area, mark, extra }: { planId: strin
         )}
       </div>
       <ul className="space-y-2" aria-label={`Práctica diaria de ${area.label}`}>
-        {list.map((d) => <KataRow key={d.date} planId={planId} area={area} d={d} mark={mark} />)}
-        {upcoming && <KataRow planId={planId} area={area} d={upcoming} mark={mark} />}
+        {list.map((d) => <KataRow key={d.date} planId={planId} area={area} d={d} mark={mark} showDates={showDates} />)}
+        {upcoming && <KataRow planId={planId} area={area} d={upcoming} mark={mark} showDates={showDates} />}
       </ul>
       {!list.length && !upcoming && <p className="px-2.5 py-2 text-[14px] text-faint">Este plan no tiene katas en esta área.</p>}
       {extra}

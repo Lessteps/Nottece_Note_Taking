@@ -97,6 +97,21 @@ describe("estado derivado por área", () => {
   const att = (note: string, ...dates: string[]) => ({ note_id: note, note_path: `Programación/programming_practice/${note}/katas/001 x.md`, attempts: dates.map((d) => ({ at: `${d}T10:00:00`, skill: "pp_kata", mode: "pp_kata", verdict: "correct", score: 90 })) });
   const base = { plan, attempts: { b: att("backend", "2026-10-05", "2026-10-06", "2026-10-08"), f: att("frontend", "2026-10-05") }, marks: {}, existing: { folders: new Set(["backend"]), files: new Set<string>() } };
 
+  it("mantiene pendiente el primer kata si se completa antes uno posterior", () => {
+    const record = { note_path: "Programación/programming_practice/backend/katas/002 second.md", attempts: [{ at: "2026-10-05T10:00:00", skill: "pp_kata", mode: "pp_kata", verdict: "correct", score: 90 }] };
+    const actual = deriveAreaPractice({ ...base, attempts: { two: record }, today: "2026-10-05" });
+    expect(actual[0]!.kata.doneDays).toBe(1);
+    expect(actual[0]!.kata.completedIndices).toEqual([2]);
+    expect(actual[0]!.kata.next!.kata.day).toBe(1);
+  });
+
+  it("avanza varios katas distintos completados el mismo día sin contar repeticiones", () => {
+    const record = (file: string) => ({ note_path: `Programación/programming_practice/backend/katas/${file}`, attempts: [{ at: "2026-10-05T10:00:00", skill: "pp_kata", mode: "pp_kata", verdict: "correct", score: 90 }] });
+    const actual = deriveAreaPractice({ ...base, attempts: { one: record("001 first.md"), two: record("002 second.md"), retry: record("002 second.md") }, today: "2026-10-05" });
+    expect(actual[0]!.kata.doneDays).toBe(2);
+    expect(actual[0]!.kata.next!.kata.day).toBe(3);
+  });
+
   it("katas hechos, racha, progreso por habilidad y semana de lunes a domingo", () => {
     const [b, f] = deriveAreaPractice({ ...base, today: "2026-10-08" });
     expect(b!.areaId).toBe("backend");

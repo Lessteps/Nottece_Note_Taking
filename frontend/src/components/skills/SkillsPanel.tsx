@@ -13,7 +13,7 @@ import { GhostButton, PrimaryButton } from "../common/forms";
 import { cn } from "../ui";
 
 type Group = { subject: string; skills: SkillInfo[] };
-const SHORT: Record<SkillInfo["kind"], string> = { theory: "Notas", canvas: "Mapa", practica: "Práctica" };
+const SHORT: Record<SkillInfo["kind"], string> = { theory: "Notas", canvas: "Mapa", practica: "Práctica", ejercicios: "Ejercicios" };
 const niceDate = (id: string): string => {
   const m = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(id);
   return m ? `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}` : id;
@@ -32,6 +32,14 @@ export function SkillsPanel() {
   const [busy, setBusy] = useState<"" | "save" | "ai" | "prompt" | "restore">("");
   const [error, setError] = useState("");
   const [maxPast, setMaxPast] = useState(3);
+  const [customSkills, setCustomSkills] = useState<Array<{ name: string; file: string }>>([]);
+  const [newName, setNewName] = useState("");
+  const [newText, setNewText] = useState("");
+  useEffect(() => { if (subject) void api.skillsCustomList(subject).then((items) => setCustomSkills(Array.isArray(items) ? items : [])).catch(() => setCustomSkills([])); }, [subject]);
+  const createCustom = async () => {
+    try { const result = await api.skillsCustomCreate({ subject, name: newName, text: newText }); setCustomSkills(await api.skillsCustomList(subject)); setNewName(""); setNewText(""); toast("info", `Skill creada en ${result.file}`); }
+    catch (e) { toast("error", (e as Error).message); }
+  };
 
   const info = useMemo(() => groups.find((g) => g.subject === subject)?.skills.find((s) => s.kind === kind), [groups, subject, kind]);
   const dirty = draft !== saved;
@@ -181,11 +189,13 @@ export function SkillsPanel() {
             data-testid="skill-editor"
             className="min-h-[260px] flex-1 resize-y rounded-lg border border-line bg-card p-2 font-mono text-[12px] leading-relaxed outline-none focus:border-accent"
           />
+          <div className="flex flex-wrap items-center gap-2"><GhostButton onClick={() => void copyText(`Revisa las skills de generación de ${subject}, incluidos teoría, mapas, práctica y ejercicios. Examina las instrucciones existentes en ${subject}/_skills y su uso real en NoteVault. Detecta vacíos y conflictos, explica qué función cumpliría cada skill propuesta y discute con el usuario cuáles conviene añadir antes de escribirlas. No reemplaces archivos sin revisar su contenido.`).then((ok) => toast(ok ? "info" : "error", ok ? "Prompt de revisión copiado." : "No se pudo copiar."))}>Verificar creación de skills</GhostButton></div>
           <div className="flex flex-wrap items-center gap-2">
             <PrimaryButton onClick={() => void save()} disabled={!dirty || !draft.trim() || busy !== ""} data-testid="skill-save"><Check size={14} aria-hidden /> Guardar</PrimaryButton>
             <GhostButton onClick={() => { setDraft(saved); setNote(""); }} disabled={!dirty || busy !== ""} data-testid="skill-discard">Descartar cambios</GhostButton>
           </div>
 
+          <details className="rounded-lg border border-line bg-card"><summary className="cursor-pointer px-3 py-2 text-sm font-semibold">Añadir skill personalizada ({customSkills.length})</summary><div className="space-y-2 p-3"><p className="text-xs text-dim">Se guarda en .notevault/skills/{subject} y se añade a las instrucciones de generación de esta materia.</p>{customSkills.map((skill) => <p className="break-all text-xs text-dim" key={skill.file}>{skill.file}</p>)}<input aria-label="Nombre de la nueva skill" value={newName} onChange={(e) => setNewName(e.target.value)} className="w-full rounded border border-line bg-panel p-2 text-sm" placeholder="nombre_de_skill" /><textarea aria-label="Instrucciones de la nueva skill" value={newText} onChange={(e) => setNewText(e.target.value)} className="w-full rounded border border-line bg-panel p-2 text-sm" rows={4} placeholder="Función e instrucciones" /><GhostButton disabled={!newName.trim() || !newText.trim()} onClick={() => void createCustom()}>Añadir y guardar skill</GhostButton></div></details>
           <details className="rounded-lg border border-line bg-card" data-testid="skill-versions">
             <summary className="flex cursor-pointer items-center gap-1.5 px-2.5 py-1.5 text-[12.5px] font-medium"><History size={13} aria-hidden /> Versiones anteriores ({info?.past.length ?? 0} de {maxPast})</summary>
             {info && info.past.length === 0 ? (

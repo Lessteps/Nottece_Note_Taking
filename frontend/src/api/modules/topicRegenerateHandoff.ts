@@ -15,6 +15,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { topicLearningContext } from "./learningContext.js";
 import { ApiError } from "../../core/errors.js";
 import { generateConcept } from "../../../tools/kb_canvas";
 import { AIConfig } from "../../core/aiClient.js";
@@ -155,16 +156,16 @@ export function topicRegenerateHandoffApi(app: AppState, hooks: HandoffHooks = {
   const parseFolder = (raw: unknown): string => {
     const parts = String(raw ?? "").replace(/\\/g, "/").split("/").filter(Boolean);
     const abs = path.join(app.root, ...parts);
-    if (parts.length !== 3 || !fs.existsSync(abs) || !fs.statSync(abs).isDirectory()) throw new ApiError("Selecciona la carpeta de un tema (Espacio / Área / Tema).");
+    if (parts.length < 3 || !fs.existsSync(abs) || !fs.statSync(abs).isDirectory()) throw new ApiError("Selecciona la carpeta de un tema (Espacio / Área / Tema).");
     if (path.relative(app.root, abs).startsWith("..")) throw new ApiError("Esa carpeta no está en la vault.");
     return parts.join("/");
   };
 
   const siblings = (folder: string): string[] => {
-    const [space, area] = folder.split("/") as [string, string, string];
+    const parent = path.posix.dirname(folder);
     try {
       return fs
-        .readdirSync(path.join(app.root, space, area), { withFileTypes: true })
+        .readdirSync(path.join(app.root, ...parent.split("/")), { withFileTypes: true })
         .filter((d) => d.isDirectory() && !d.name.startsWith("_") && !d.name.startsWith("."))
         .map((d) => d.name)
         .sort((a, b) => a.localeCompare(b, "es", { numeric: true }));
@@ -186,7 +187,10 @@ export function topicRegenerateHandoffApi(app: AppState, hooks: HandoffHooks = {
   // ── Los prompts: los MISMOS que enviaría la app ───────────────────────────────────────────────────────────────────
 
   const theoryPrompt = (folder: string): Array<{ role: string; content: string }> => {
-    const [space, area, topic] = folder.split("/") as [string, string, string];
+    const [space, ...parts] = folder.split("/");
+    const topic = parts.pop()!;
+    const area = parts.join("/");
+    if (!space) throw new ApiError("La carpeta del tema no es válida.");
     const sibs = siblings(folder);
     return theoryMessagesFor(app, space, subjectName(space), area, topic, sibs.slice(0, Math.max(0, sibs.indexOf(topic))));
   };
@@ -212,6 +216,12 @@ export function topicRegenerateHandoffApi(app: AppState, hooks: HandoffHooks = {
       templates: skillTemplates(app, folder),
       currentSkills: manifest.skills,
     });
+    const context = topicLearningContext(app, folder);
+    if (context) {
+      const user = messages.find((m) => m.role === "user");
+      if (user) user.content += context;
+      else messages.push({ role: "user", content: context });
+    }
     return { manifest, topicAbs, cls, catalog, messages };
   };
 
@@ -227,7 +237,7 @@ export function topicRegenerateHandoffApi(app: AppState, hooks: HandoffHooks = {
       quantity: "ai" as const,
       assistance: "no_help" as const,
       planCount: count,
-      learning: learningPromptLines(app.root, folder, skill),
+      learning: [...learningPromptLines(app.root, folder, skill), topicLearningContext(app, folder)].filter(Boolean),
       taughtBefore: taughtBeforeOf(topicAbs),
       ...vocabularyWords(app, found.manifest.subject, skill, found.manifest.title),
     };

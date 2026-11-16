@@ -1,5 +1,5 @@
 import {
-  ArrowLeft, Bookmark, GraduationCap, LayoutDashboard, Waypoints, ChevronsDownUp, Hash, Database, FilePlus, Files, FolderPlus, Network, RefreshCw, Search,
+  ArrowLeft, Bookmark, GraduationCap, LayoutDashboard, Waypoints, ChevronsDownUp, Hash, Database, FilePlus, Files, FolderPlus, Network, RefreshCw, Search, ChevronLeft,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api } from "../../lib/bridge";
@@ -44,6 +44,15 @@ export function Explorer({ width }: { width: number }) {
             {tab === t.id && t.label}
           </button>
         ))}
+        <button
+          type="button"
+          onClick={() => useApp.getState().toggleExplorer()}
+          title="Plegar explorador (Ctrl+\)"
+          aria-label="Plegar explorador"
+          className="ml-auto grid h-7 w-7 flex-none place-items-center rounded-md text-faint transition-colors hover:bg-hover hover:text-text cursor-pointer"
+        >
+          <ChevronLeft size={14} />
+        </button>
       </div>
 
       <div className="min-h-0 flex-1">

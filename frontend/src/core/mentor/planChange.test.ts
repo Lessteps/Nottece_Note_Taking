@@ -25,12 +25,30 @@ describe("applyOps: parche + recálculo semanal determinista", () => {
   const sub = base.subplans[0]!.id;
   const folders = (p: Plan) => p.subplans.flatMap((s) => s.topics.map((x) => x.folder));
 
+  it("conserva la guía pedagógica al recalcular el plan", () => {
+    const guided = structuredClone(base);
+    guided.subplans[0]!.learningGuide = "Explica desde cero";
+    const result = applyOps(guided, [{ op: "set_deliverable", subplan: sub, enabled: false }], ctx);
+    expect(result.applied).toBe(1);
+    expect(result.plan.subplans[0]!.learningGuide).toBe("Explica desde cero");
+    expect(sanitizePlan(JSON.parse(JSON.stringify(result.plan)))!.subplans[0]!.learningGuide).toBe("Explica desde cero");
+  });
+
+  it("conserva la marca de revisión al recalcular el plan", () => {
+    const marked = structuredClone(base);
+    marked.subplans[0]!.topics[0]!.revisionAddedAt = "2026-11-13";
+    const result = applyOps(marked, [{ op: "set_deliverable", subplan: sub, enabled: false }], ctx);
+    expect(result.applied).toBe(1);
+    expect(result.plan.subplans[0]!.topics.find((topic) => topic.folder === marked.subplans[0]!.topics[0]!.folder)?.revisionAddedAt).toBe("2026-11-13");
+  });
+
   it("quitar temas y añadir otros del catálogo recalcula las semanas y resume el cambio", () => {
     const r = applyOps(base, [{ op: "remove_topic", folder: ALL[0]!.folder }, { op: "add_topic", subplan: sub, folder: ALL.at(-1)!.folder }], ctx);
     expect(r.applied).toBe(2);
     expect(r.delta).toMatchObject({ added: 1, removed: 1 });
     expect(folders(r.plan)).not.toContain(ALL[0]!.folder);
     expect(folders(r.plan)).toContain(ALL.at(-1)!.folder);
+    expect(r.plan.subplans.flatMap((s) => s.topics).find((topic) => topic.folder === ALL.at(-1)!.folder)?.revisionAddedAt).toBe(TODAY);
     expect(r.changed).toContain(ALL.at(-1)!.folder);
     // el reparto sigue ordenado por semanas y dentro del periodo
     const weeks = r.plan.subplans[0]!.topics.map((x) => x.targetWeek);

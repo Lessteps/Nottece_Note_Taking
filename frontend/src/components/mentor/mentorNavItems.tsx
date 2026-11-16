@@ -36,7 +36,7 @@ export function planeacionItems(plan: Pick<MentorPlan, "programmingPractice" | "
 }
 
 const runIcon = (l: RunLink): ReactNode =>
-  l.tab === "general" ? <Sun /> : l.tab === "bases" ? <Layers /> : l.tab === "proyectos" ? <FolderKanban /> : l.tab === "registros" ? <NotebookText /> : l.tab.startsWith("area:") ? dot(focusColour(l.areaId)) : <BookOpenCheck />;
+  l.tab === "general" ? <Sun /> : l.tab === "bases" ? <Layers /> : l.tab === "practicas-diarias" ? <Dumbbell /> : l.tab === "proyectos" ? <FolderKanban /> : l.tab === "registros" ? <NotebookText /> : l.tab.startsWith("area:") ? dot(focusColour(l.areaId)) : <BookOpenCheck />;
 
 export function ejecucionItems(plan: Pick<MentorPlan, "subplans">, opts?: RunLinkOptions): SidebarItem[] {
   return ejecucionLinks(plan, opts).map((l) => {

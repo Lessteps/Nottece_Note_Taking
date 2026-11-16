@@ -5,11 +5,11 @@ import { COVERAGE_SYSTEM_PROMPT } from "./planCoverageAi";
 import { PLANNER_SYSTEM_PROMPT } from "./planner";
 import { evaluateAreaMethodology } from "../../lib/planAreas";
 
-describe("la metodología pieza a pieza llega a la IA que arma o juzga un plan", () => {
+describe("la metodología adaptada llega a la IA que arma o juzga un plan", () => {
   it.each([["esqueleto", SKELETON_SYSTEM], ["temas", TOPICS_SYSTEM], ["temas (compacto)", TOPICS_COMPACT_SYSTEM], ["planificador", PLANNER_SYSTEM_PROMPT], ["análisis de cobertura", COVERAGE_SYSTEM_PROMPT]])("%s", (_n, prompt) => {
     expect(prompt).toContain(METHODOLOGY_RULE);
-    expect(METHODOLOGY_RULE).toMatch(/PROPIO tema/);
-    expect(METHODOLOGY_RULE).toMatch(/ASIGNATURAS de Frontend/);
+    expect(METHODOLOGY_RULE).toMatch(/método de estudio adecuado/);
+    expect(METHODOLOGY_RULE).toMatch(/no impongas esa regla/);
   });
 });
 

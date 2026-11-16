@@ -46,6 +46,7 @@ export interface ScheduleTopic {
   estMinutes: number;
   targetWeek: number;
   completedAt?: string;
+  revisionAddedAt?: string;
   pinned?: boolean;
   group?: string;
   /** ruta: `skipped` queda fuera del reparto y de las cuentas (ver `planRoute.ts`) */

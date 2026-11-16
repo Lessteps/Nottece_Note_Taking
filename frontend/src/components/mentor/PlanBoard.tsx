@@ -29,6 +29,8 @@ import type { AreaPracticeView } from "../../lib/areaPracticeView";
 
 export interface BoardRow {
   folder: string;
+  found?: boolean;
+  revisionAddedAt?: string;
   /** grupo del área al que pertenece (Bases, Lenguaje: Python, Conocimientos…) */
   group?: string;
   /** texto secundario (parte, minutos…) */

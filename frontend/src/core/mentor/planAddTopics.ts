@@ -152,6 +152,11 @@ function groupForItem(it: AddTopicItem, subAreaId?: string, existing: readonly A
  * Añade los temas al final de la ruta de su área. Función pura: devuelve el plan nuevo (el mismo objeto si no cambió nada). `items` ya viene validado
  * contra la vault; aquí solo se decide el destino y el orden.
  */
+function localToday(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
 export function addTopicsToPlan(plan: Plan, items: readonly AddTopicItem[]): AddTopicsResult {
   const weeks = Math.max(1, weekRangesOf(plan.start, plan.end).length);
   const present = new Set(plan.subplans.flatMap((s) => s.topics.map((t) => t.folder)));
@@ -213,6 +218,7 @@ export function addTopicsToPlan(plan: Plan, items: readonly AddTopicItem[]): Add
         estMinutes: it.estMinutes,
         ...(gDef ? { group: gDef.id } : {}),
         addedFrom: "curriculum" as const,
+        revisionAddedAt: localToday(),
       };
     });
     groupsOf.sort((a, b) => a.order - b.order);

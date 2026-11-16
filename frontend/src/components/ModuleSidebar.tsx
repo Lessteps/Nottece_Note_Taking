@@ -22,7 +22,8 @@ export interface SidebarItem {
 
 export function ModuleSidebar({
   title, items, active, onSelect, children, footer,
-  collapsible, collapsed, onToggleCollapsed,
+  collapsible = true, collapsed: controlledCollapsed, onToggleCollapsed,
+  hideChildrenOnCollapse = true,
 }: {
   title: string;
   items: SidebarItem[];
@@ -33,30 +34,57 @@ export function ModuleSidebar({
   collapsible?: boolean;
   collapsed?: boolean;
   onToggleCollapsed?: () => void;
+  hideChildrenOnCollapse?: boolean;
 }) {
   // El botón «Panel lateral» de la barra de título (Ctrl+\) pliega la columna de CUALQUIER módulo, no solo el explorador de Notas:
   // así, en una ventana estrecha, el contenido recupera el ancho.
   const open = useApp((s) => s.explorerOpen);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const isCollapsed = collapsible === true && collapsed === true;
+  const [internalCollapsed, setInternalCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(`nv.sidebar.${title.toLowerCase()}.collapsed`) === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  const isCollapsed = collapsible && (controlledCollapsed !== undefined ? controlledCollapsed : internalCollapsed);
+
+  const handleToggle = () => {
+    if (onToggleCollapsed) {
+      onToggleCollapsed();
+    } else {
+      setInternalCollapsed((prev) => {
+        const next = !prev;
+        try {
+          localStorage.setItem(`nv.sidebar.${title.toLowerCase()}.collapsed`, String(next));
+        } catch {}
+        return next;
+      });
+    }
+  };
+
   if (!open) return null;
   return (
-    <aside className={isCollapsed
-      ? "flex w-16 flex-none flex-col border-r border-line bg-panel"
-      : "flex w-[260px] flex-none flex-col border-r border-line bg-panel"}>
-      <div className="flex h-10 flex-none items-center border-b border-line px-4">
+    <aside className={cn(
+      "flex flex-none flex-col border-r border-line bg-panel transition-all duration-200",
+      isCollapsed ? "w-16" : "w-[260px]"
+    )}>
+      <div className="flex h-10 flex-none items-center border-b border-line px-3">
         {!isCollapsed && (
-          <span className="font-mono text-[10.5px] font-semibold uppercase tracking-wider text-faint">{title}</span>
+          <span className="font-mono text-[10.5px] font-semibold uppercase tracking-wider text-faint truncate">
+            {title}
+          </span>
         )}
-        {collapsible === true && (
+        {collapsible && (
           <button
             type="button"
-            onClick={() => onToggleCollapsed?.()}
+            onClick={handleToggle}
             aria-label={isCollapsed ? "Mostrar barra lateral" : "Ocultar barra lateral"}
             aria-expanded={!isCollapsed}
             title={isCollapsed ? "Mostrar barra lateral" : "Ocultar barra lateral"}
             className={cn(
-              "grid h-7 w-7 place-items-center rounded-md text-faint transition-colors hover:bg-hover hover:text-text",
+              "grid h-7 w-7 place-items-center rounded-md text-faint transition-colors hover:bg-hover hover:text-text cursor-pointer",
               isCollapsed ? "mx-auto" : "ml-auto",
             )}
           >
@@ -67,8 +95,21 @@ export function ModuleSidebar({
       <nav aria-label={title} className="flex min-h-0 flex-col gap-0.5 overflow-y-auto p-2">
         {items.map((it) => (
           <div key={it.id} className="flex flex-col gap-0.5">
-            {!isCollapsed && it.sectionLabel && <p className="mt-2 px-2.5 pb-0.5 font-mono text-[10.5px] font-semibold uppercase tracking-wider text-faint first:mt-0" data-testid={`nav-section-${it.id}`}>{it.sectionLabel}</p>}
-            <SidebarButton it={it} active={active === it.id} onSelect={(id) => { onSelect(id); if (it.expandable) setExpanded((s) => ({ ...s, [id]: !(s[id] ?? !!it.subItems?.some((sub) => sub.id === active)) })); }} collapsed={isCollapsed} expanded={it.expandable ? (expanded[it.id] ?? !!it.subItems?.some((sub) => sub.id === active)) : undefined} />
+            {!isCollapsed && it.sectionLabel && (
+              <p className="mt-2 px-2.5 pb-0.5 font-mono text-[10.5px] font-semibold uppercase tracking-wider text-faint first:mt-0" data-testid={`nav-section-${it.id}`}>
+                {it.sectionLabel}
+              </p>
+            )}
+            <SidebarButton
+              it={it}
+              active={active === it.id}
+              onSelect={(id) => {
+                onSelect(id);
+                if (it.expandable) setExpanded((s) => ({ ...s, [id]: !(s[id] ?? !!it.subItems?.some((sub) => sub.id === active)) }));
+              }}
+              collapsed={isCollapsed}
+              expanded={it.expandable ? (expanded[it.id] ?? !!it.subItems?.some((sub) => sub.id === active)) : undefined}
+            />
             {!isCollapsed && it.subItems && it.subItems.length > 0 && (!it.expandable || (expanded[it.id] ?? !!it.subItems?.some((sub) => sub.id === active))) && (
               <div className="ml-4 flex flex-col gap-0.5 border-l border-line pl-1.5" role="group" aria-label={`${it.label}: sub-vistas`}>
                 {it.subItems.map((sub) => (
@@ -79,8 +120,10 @@ export function ModuleSidebar({
           </div>
         ))}
       </nav>
-      <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
-      {footer}
+      {(!isCollapsed || !hideChildrenOnCollapse) && children && (
+        <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+      )}
+      {!isCollapsed && footer}
     </aside>
   );
 }

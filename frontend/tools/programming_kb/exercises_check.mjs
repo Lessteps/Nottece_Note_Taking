@@ -13,7 +13,7 @@ import { ROOT, scanTopics } from "./exercises_status.mjs";
 const args = process.argv.slice(2);
 const recentIdx = args.indexOf("--recent");
 const recentMin = recentIdx >= 0 ? Number(args[recentIdx + 1]) : 0;
-const rest = args.filter((a, i) => i !== recentIdx && i !== recentIdx + 1);
+const rest = recentIdx < 0 ? args : args.filter((_, i) => i !== recentIdx && i !== recentIdx + 1);
 const re = rest.length ? new RegExp(rest[0]) : null;
 
 const NAME_RE = /^ej_([a-z_]+)_d([1-3])_(\d{6,})_(\d+)\.md$/;

@@ -198,16 +198,13 @@ describe("regenerar los ejercicios", () => {
 });
 
 describe("regenerar el mapa", () => {
-  it("respalda el canvas y, si estaba editado a mano, lo conserva y deja el nuevo en .nuevo.canvas (sin IA)", async () => {
+  it("respalda el canvas y actualiza el mapa principal (sin IA)", async () => {
     const api = make({ generateTheory: async () => { throw new Error("no debe usar la IA"); } });
     const st = await finish(api, api.study_topic_regenerate(FOLDER, "map", true).jobId);
     expect(st.error).toBe("");
     expect(st.what).toBe("map");
     expect(read(`${st.backup}/4.1 Uno — mapa.canvas`)).toBe(OLD_CANVAS);
-    expect(read(`${FOLDER}/4.1 Uno — mapa.canvas`)).toBe(OLD_CANVAS); // sin huella del generador = editado a mano: no se pisa
-    expect(exists(`${FOLDER}/4.1 Uno — mapa.nuevo.canvas`)).toBe(true);
-    expect(JSON.parse(read(`${FOLDER}/4.1 Uno — mapa.nuevo.canvas`)).nodes.length).toBeGreaterThan(1);
-    expect(st.created).toEqual([`${FOLDER}/4.1 Uno — mapa.nuevo.canvas`]);
+    expect(JSON.parse(read(`${FOLDER}/4.1 Uno — mapa.canvas`)).nodes.length).toBeGreaterThan(1);
     expect(read(`${FOLDER}/4.1 Uno.md`)).toBe(OLD_NOTE); // la nota no se toca
   });
 

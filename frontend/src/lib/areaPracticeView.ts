@@ -73,6 +73,8 @@ export interface AreaPracticeView {
   kata: {
     plannedDays: number;
     doneDays: number;
+    /** índices de retos completados, para conservar su identidad al avanzar fuera de orden */
+    completedIndices?: number[];
     streak: number;
     todayPlanned: boolean;
     todayDone: boolean;

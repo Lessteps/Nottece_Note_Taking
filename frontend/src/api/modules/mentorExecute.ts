@@ -20,6 +20,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { topicLearningContexts } from "./learningContext.js";
 import { AIConfig, sendChat } from "../../core/aiClient.js";
 import { ApiError } from "../../core/errors.js";
 import { areaFiles, areaKataDates, practiceAreasOf } from "../../lib/areaPracticeSystem.js";
@@ -243,7 +244,9 @@ export function mentorExecuteApi(app: AppState, hooks: MentorExecuteHooks = {}) 
         "PROJECTS/NoteVault/docs/ANTIGRAVITY_PLAN_CONTENT_GENERATION.md",
       ].filter(has);
       const toolsDir = has("PROJECTS/NoteVault/frontend/tools/programming_kb/status.mjs") ? path.join(app.root, "PROJECTS", "NoteVault", "frontend") : undefined;
-      const markdown = buildHandoffMarkdown(report, { planName: plan.name ?? plan.id, start: plan.start, end: plan.end, contracts, ...(toolsDir ? { toolsDir } : {}) });
+      const contextFolders = [...new Set(report.tasks.map((t) => t.folder).filter((f): f is string => !!f))];
+      const contexts = topicLearningContexts(app, contextFolders).filter(Boolean);
+      const markdown = buildHandoffMarkdown(report, { planName: plan.name ?? plan.id, start: plan.start, end: plan.end, contracts, ...(toolsDir ? { toolsDir } : {}) }) + (contexts.length ? `\n\n## Learning plan and recorded progress by topic\n${contexts.join("\n")}` : "");
       const file = path.join(app.root, ".notevault", "mentor", "handoff", `${plan.id}.md`);
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(file, markdown, "utf-8");
@@ -346,7 +349,8 @@ export function mentorExecuteApi(app: AppState, hooks: MentorExecuteHooks = {}) 
       const num = String(pkg.order).padStart(2, "0");
       const relPath = `${space}/_handoff/${plan.id}/${num}-${pkg.id}.md`;
       const abs = path.join(app.root, ...relPath.split("/"));
-      const md = packageMarkdown(pkg, { vaultRoot: app.root, space, planName: plan.name ?? plan.id, masterDoc: MASTER_DOC, toolsDir: TOOLS_DIR, total: sc.packages.length });
+      const contexts = topicLearningContexts(app, pkg.topics.map((t) => t.folder)).filter(Boolean);
+      const md = packageMarkdown(pkg, { vaultRoot: app.root, space, planName: plan.name ?? plan.id, masterDoc: MASTER_DOC, toolsDir: TOOLS_DIR, total: sc.packages.length }) + (contexts.length ? `\n\n## Learning plan and recorded progress by topic\n${contexts.join("\n")}` : "");
       fs.mkdirSync(path.dirname(abs), { recursive: true });
       fs.writeFileSync(abs, md, "utf-8");
       const written = { at: now(), path: abs };

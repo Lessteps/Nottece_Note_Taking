@@ -86,6 +86,7 @@ export interface PlannedTopic {
   topicProject?: TopicProject;
   /** de dónde llegó al plan sin estar en su ruta original: `curriculum` = temas de referencia creados con «Crear con Antigravity» y añadidos con «Añadir al plan» */
   addedFrom?: "curriculum";
+  revisionAddedAt?: string;
   /** identificador estable del tema (resiste cambios en la estructura de carpetas de la vault) */
   topicId?: string;
   /** tags o etiquetas metodológicas del tema */
@@ -137,6 +138,8 @@ export interface Subplan {
   requiredGoals: RequiredGoal[];
   deliverable?: Deliverable;
   notes?: string;
+  /** orientación pedagógica persistente para crear contenido del área */
+  learningGuide?: string;
   /** id del área elemental (`backend`, `frontend`…): presente en los planes por áreas */
   areaId?: string;
   /** grupos internos del área, en orden (Bases · Lenguaje · Conocimientos) */
@@ -484,10 +487,11 @@ export interface SubplanSeed {
   objective: string;
   goalId?: string;
   goalItemIds?: string[];
-  topics: Array<{ folder: string; title: string; skills?: string[]; estMinutes: number; diagnostic?: boolean; group?: string; route?: PlannedTopic["route"]; skippedReason?: string; topicProject?: TopicProject; addedFrom?: "curriculum" }>;
+  topics: Array<{ folder: string; title: string; skills?: string[]; estMinutes: number; diagnostic?: boolean; group?: string; route?: PlannedTopic["route"]; skippedReason?: string; topicProject?: TopicProject; addedFrom?: "curriculum"; revisionAddedAt?: string }>;
   requiredGoals?: RequiredGoal[];
   deliverable?: Partial<Deliverable> & { title: string };
   notes?: string;
+  learningGuide?: string;
   /** peso para repartir la capacidad entre subplanes (por defecto, sus minutos): el constructor guiado lo usa para «más tiempo a…» */
   weight?: number;
   /** área elemental (`backend`…) y sus grupos internos: el subplan es un ÁREA del plan por áreas */
@@ -625,7 +629,7 @@ export function buildPlan(seeds: readonly SubplanSeed[], opts: BuildOpts): Built
     const extraOf = new Map(seed.topics.map((t) => [t.folder, t] as const));
     const withExtras = (t: PlannedTopic): PlannedTopic => {
       const x = extraOf.get(t.folder);
-      return { ...t, ...(x?.route && x.route !== "skipped" ? { route: x.route } : {}), ...(x?.topicProject ? { topicProject: x.topicProject } : {}), ...(x?.addedFrom ? { addedFrom: x.addedFrom } : {}) };
+      return { ...t, ...(x?.route && x.route !== "skipped" ? { route: x.route } : {}), ...(x?.topicProject ? { topicProject: x.topicProject } : {}), ...(x?.addedFrom ? { addedFrom: x.addedFrom } : {}), ...(x?.revisionAddedAt ? { revisionAddedAt: x.revisionAddedAt } : {}) };
     };
     const plannedBy = new Map(dist.topics.map((t) => [t.folder, t] as const));
     let lastWeek = dist.topics[0]?.targetWeek ?? win?.fromWeek ?? 1;
@@ -636,7 +640,7 @@ export function buildPlan(seeds: readonly SubplanSeed[], opts: BuildOpts): Built
         lastWeek = planned.targetWeek;
         allTopics.push(withExtras(planned));
       } else if (!isLive(st)) {
-        allTopics.push({ folder: st.folder, title: st.title, ...(st.skills?.length ? { skills: st.skills } : {}), targetWeek: lastWeek, estMinutes: st.estMinutes, ...(st.group ? { group: st.group } : {}), route: "skipped", ...(st.skippedReason ? { skippedReason: st.skippedReason } : {}), ...(st.topicProject ? { topicProject: st.topicProject } : {}), ...(st.addedFrom ? { addedFrom: st.addedFrom } : {}) });
+        allTopics.push({ folder: st.folder, title: st.title, ...(st.skills?.length ? { skills: st.skills } : {}), targetWeek: lastWeek, estMinutes: st.estMinutes, ...(st.group ? { group: st.group } : {}), route: "skipped", ...(st.skippedReason ? { skippedReason: st.skippedReason } : {}), ...(st.topicProject ? { topicProject: st.topicProject } : {}), ...(st.addedFrom ? { addedFrom: st.addedFrom } : {}), ...(st.revisionAddedAt ? { revisionAddedAt: st.revisionAddedAt } : {}) });
       }
     }
     totalMinutes += dist.totalMinutes;
@@ -657,6 +661,7 @@ export function buildPlan(seeds: readonly SubplanSeed[], opts: BuildOpts): Built
       requiredGoals: (seed.requiredGoals ?? []).map((g) => ({ goalId: g.goalId, ...(g.itemId ? { itemId: g.itemId } : {}), note: oneLine(g.note, 200) })),
       ...(deliverable ? { deliverable } : {}),
       ...(seed.notes ? { notes: oneLine(seed.notes, 400) } : {}),
+      ...(seed.learningGuide ? { learningGuide: oneLine(seed.learningGuide, 1600) } : {}),
       ...(seed.areaId ? { areaId: seed.areaId } : {}),
       ...(seed.groups?.length ? { groups: seed.groups } : {}),
       ...(win ? { phase: win } : {}),
@@ -772,6 +777,7 @@ export interface TopicView extends PlannedTopic {
   /** 0..100 */
   pct: number;
   found: boolean;
+  lastAttemptAt?: string | null;
   /** ejercicios que el tema ya tiene en la vault (la práctica del plan los prioriza) */
   exercises?: number;
 }
@@ -811,7 +817,7 @@ export function deriveView(plan: Plan, lookup: TopicLiteLookup, today: string): 
       const snap = lookup(t.folder) ?? null;
       const state = topicState(snap);
       const pct = snap ? Math.max(0, Math.min(100, Math.round(snap.progress.completenessPct))) : 0;
-      return { ...t, state, pct: state === "completo" ? 100 : pct, found: !!snap, ...(snap?.exerciseCount ? { exercises: snap.exerciseCount } : {}) };
+      return { ...t, state, pct: state === "completo" ? 100 : pct, found: !!snap, lastAttemptAt: snap?.lastAttemptAt ?? null, ...(snap?.exerciseCount ? { exercises: snap.exerciseCount } : {}) };
     });
     // los temas fuera de ruta se muestran pero no cuentan en el avance
     const counted = topics.filter(isLive);
@@ -1029,6 +1035,7 @@ function cleanTopic(raw: any): PlannedTopic | null {
   const tp = sanitizeTopicProject(raw.topicProject);
   if (tp) t.topicProject = tp;
   if (raw.addedFrom === "curriculum") t.addedFrom = "curriculum";
+  if (DATE_RE.test(String(raw.revisionAddedAt ?? ""))) t.revisionAddedAt = String(raw.revisionAddedAt);
   const topicId = oneLine(raw.topicId, 120);
   if (topicId) t.topicId = topicId;
   return t;
@@ -1088,6 +1095,7 @@ export function sanitizePlan(raw: any, fileId?: string): Plan | null {
         .map((g: any) => ({ goalId: String(g.goalId), ...(g.itemId ? { itemId: String(g.itemId) } : {}), note: oneLine(g.note, 200) })),
       ...(deliverable ? { deliverable } : {}),
       ...(s.notes ? { notes: oneLine(s.notes, 400) } : {}),
+      ...(s.learningGuide ? { learningGuide: oneLine(s.learningGuide, 1600) } : {}),
       ...(oneLine(s.areaId, 40) ? { areaId: oneLine(s.areaId, 40) } : {}),
       ...(sanitizeGroups(s.groups).length ? { groups: sanitizeGroups(s.groups) } : {}),
       ...(sanitizePhase(s.phase, ranges.length) ? { phase: sanitizePhase(s.phase, ranges.length)! } : {}),

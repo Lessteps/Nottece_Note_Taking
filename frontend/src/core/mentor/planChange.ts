@@ -193,10 +193,11 @@ function seedOf(s: Subplan): SubplanSeed {
     objective: s.objective,
     ...(s.goalId ? { goalId: s.goalId } : {}),
     ...(s.goalItemIds?.length ? { goalItemIds: s.goalItemIds } : {}),
-    topics: s.topics.filter((t) => !t.completedAt).map((t) => ({ folder: t.folder, title: t.title, ...(t.skills?.length ? { skills: t.skills } : {}), estMinutes: t.estMinutes, ...(t.diagnostic ? { diagnostic: true } : {}), ...(t.group ? { group: t.group } : {}), ...(t.route ? { route: t.route } : {}), ...(t.skippedReason ? { skippedReason: t.skippedReason } : {}), ...(t.topicProject ? { topicProject: t.topicProject } : {}), ...(t.addedFrom ? { addedFrom: t.addedFrom } : {}) })),
+    topics: s.topics.filter((t) => !t.completedAt).map((t) => ({ folder: t.folder, title: t.title, ...(t.skills?.length ? { skills: t.skills } : {}), estMinutes: t.estMinutes, ...(t.diagnostic ? { diagnostic: true } : {}), ...(t.group ? { group: t.group } : {}), ...(t.route ? { route: t.route } : {}), ...(t.skippedReason ? { skippedReason: t.skippedReason } : {}), ...(t.topicProject ? { topicProject: t.topicProject } : {}), ...(t.addedFrom ? { addedFrom: t.addedFrom } : {}), ...(t.revisionAddedAt ? { revisionAddedAt: t.revisionAddedAt } : {}) })),
     requiredGoals: s.requiredGoals,
     ...(s.deliverable ? { deliverable: s.deliverable } : {}),
     ...(s.notes ? { notes: s.notes } : {}),
+    ...(s.learningGuide ? { learningGuide: s.learningGuide } : {}),
     ...(s.areaId ? { areaId: s.areaId } : {}),
     ...(s.groups?.length ? { groups: s.groups } : {}),
     ...(s.fallback ? { fallback: s.fallback } : {}),
@@ -271,7 +272,7 @@ export function applyOps(plan: Plan, ops: readonly ChangeOp[], ctx: ChangeCtx): 
         const c = byFolder.get(op.folder);
         if (!sub || !c || present(c.folder)) break;
         const g = sub.areaId ? groupFor(sub, c.folder) : undefined;
-        sub.topics.push({ folder: c.folder, title: c.title, estMinutes: pre ? adjustedMinutes(c.estMinutes, areaOfFolder(c.folder), pre.levels) : c.estMinutes, ...(g ? { group: g.id } : {}) });
+        sub.topics.push({ folder: c.folder, title: c.title, estMinutes: pre ? adjustedMinutes(c.estMinutes, areaOfFolder(c.folder), pre.levels) : c.estMinutes, ...(g ? { group: g.id } : {}), revisionAddedAt: ctx.today });
         if (g) Object.assign(sub, syncGroups(sub, [g]));
         if (op.week && op.week >= 1 && op.week <= weeks) pins.set(c.folder, Math.round(op.week));
         structural();

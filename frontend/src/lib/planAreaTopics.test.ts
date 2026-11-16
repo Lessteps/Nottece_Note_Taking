@@ -22,6 +22,11 @@ const row = (folder: string, over: Partial<PlanTopicRow> = {}): PlanTopicRow => 
 const catalog = [row("P/4/4.1 HTTP"), row("P/4/4.2 REST", { canvas: false, complete: false }), row("P/4/4.3 Sueltos", { exercises: 0 })];
 
 describe("temas por área", () => {
+  it("propaga la marca de revisión a la fila sin depender del catálogo", () => {
+    const area = sub("x", "Backend", [topic("P/4/Nuevo", 1, { revisionAddedAt: "2026-11-13" })]) as MentorPlan["subplans"][number];
+    expect(areaTopicRows(area, [])[0]).toMatchObject({ revisionAddedAt: "2026-11-13", exists: false });
+  });
+
   it("una pestaña por área del plan, con su clave de alcance, los completados y lo que falta generar", () => {
     const tabs = areaTabsOf(plan, catalog);
     expect(tabs.map((t) => [t.key, t.area])).toEqual([["s1", "Backend"], ["frontend", "Frontend"]]);

@@ -4,7 +4,7 @@
 // accelerators, so the shortcuts are handled here, on the window's input events. The level is
 // remembered across restarts and shared by every window.
 
-import { app, type BrowserWindow } from "electron";
+import { app, ipcMain, type BrowserWindow } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { nextZoom, zoomActionFor, ZOOM_MAX, ZOOM_MIN, type ZoomAction } from "../src/core/zoomLevel.js";
@@ -31,6 +31,11 @@ function writeLevel(level: number): void {
 
 let current: number | null = null;
 const windows = new Set<BrowserWindow>();
+const canvasZoomTargets = new WeakSet<Electron.WebContents>();
+ipcMain.on("nv-interactive-route-active", (event, active: unknown) => {
+  if (active === true) canvasZoomTargets.add(event.sender);
+  else canvasZoomTargets.delete(event.sender);
+});
 
 export function getCurrentZoomLevel(): number {
   current ??= readLevel();
@@ -60,6 +65,10 @@ export function installZoom(win: BrowserWindow): void {
     const action = zoomActionFor(input);
     if (!action) return;
     event.preventDefault();
+    if (canvasZoomTargets.has(win.webContents) && action !== "reset") {
+      win.webContents.send("nv-interactive-route-zoom", action);
+      return;
+    }
     applyZoomAction(action);
   });
 }

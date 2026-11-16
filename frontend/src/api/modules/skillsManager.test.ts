@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../appConfig.js", () => ({ AppConfig: { get_ai_config: () => ({ provider: "openai", api_key: "k", model: "m" }), set_ai_config: () => undefined, get_conversations_dir: () => "/tmp/x" } }));
 import { AppState } from "../appState.js";
 import { MAX_PAST, skillsManagerApi } from "./skillsManager.js";
+import { readSkillTemplates } from "../../core/practice/skillTemplates.js";
 
 let dir: string;
 let clock = 0;
@@ -22,10 +23,20 @@ beforeEach(() => {
 afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 
 describe("gestor de skills", () => {
-  it("lista las tres skills de cada materia que las tiene, con su versión", () => {
+  it("crea una skill personalizada en .notevault y la incluye en las plantillas de su materia", () => {
+    const api = mk();
+    const created = api.skills_custom_create({ subject: "Programación", name: "revisar_ejercicios", text: "Comprobar pistas" });
+    expect(created.file).toBe(".notevault/skills/Programación/revisar_ejercicios.md");
+    expect(api.skills_custom_list({ subject: "Programación" })).toHaveLength(1);
+    expect(readSkillTemplates(dir, "Programación/tema").some((s) => s.title === "revisar_ejercicios" && s.content.includes("Comprobar pistas"))).toBe(true);
+    expect(readSkillTemplates(dir, "Matemáticas/tema").some((s) => s.title === "revisar_ejercicios")).toBe(false);
+    expect(() => api.skills_custom_create({ subject: "Programación", name: "revisar_ejercicios", text: "otro" })).toThrow();
+    expect(() => api.skills_custom_create({ subject: "Programación", name: "../escape", text: "otro" })).toThrow();
+  });
+  it("lista las skills de cada materia, incluida ejercicios, con su versión", () => {
     const r = mk().skills_list();
     expect(r.subjects.map((s) => s.subject)).toEqual(["Programación"]);
-    expect(r.subjects[0]!.skills.map((s) => s.kind)).toEqual(["theory", "canvas", "practica"]);
+    expect(r.subjects[0]!.skills.map((s) => s.kind)).toEqual(["theory", "canvas", "ejercicios", "practica"]);
     expect(r.subjects[0]!.skills[0]).toMatchObject({ file: "Programación/_skills/resumen_teorico_skill.md", past: [] });
     expect(r.subjects[0]!.skills[0]!.version).toMatch(/^[0-9a-f]{8}$/);
     expect(r.maxPast).toBe(3);

@@ -546,7 +546,7 @@ describe("MentorModule: modo global y «Crear plan»", () => {
     await mountEl(<MentorModule />);
     // plan mantenido y en curso: abre en Ejecución
     expect(byTest("mentor-mode-ejecucion")!.getAttribute("aria-checked")).toBe("true");
-    expect(navIds()).toEqual(["nav-ej:general", "nav-ej:area:s1-programacion", "nav-ej:area:s2-ingles", "nav-ej:proyectos", "nav-ej:registros"]);
+    expect(navIds()).toEqual(["nav-ej:general", "nav-ej:area:s1-programacion", "nav-ej:area:s2-ingles", "nav-ej:practicas-diarias", "nav-ej:proyectos", "nav-ej:registros"]);
     expect(byTest("plan-run")).toBeTruthy();
     await click(byTest("mentor-mode-planeacion")!);
     expect(navIds()).toEqual(["nav-pl:general", "nav-pl:area/s1-programacion", "nav-pl:area/s2-ingles", "nav-pl:add-area", "nav-pl:entregables", "nav-pl:registros", "nav-pl:preparar", "nav-pl:cambios"]);

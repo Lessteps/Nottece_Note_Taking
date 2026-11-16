@@ -73,6 +73,26 @@ describe("HomeModule", () => {
       { date: "2026-09-26", active: ["h1", "h2"], done: ["h2"], pct: 50 },
       { date: "2026-09-27", active: [], done: [], pct: 0 },
     ]);
+
+    vi.spyOn(api, "calRange").mockResolvedValue({
+      "2026-09-26": [
+        {
+          id: "c1",
+          date: "2026-09-26",
+          kind: "exercise",
+          title: "Back etc. Workout",
+          start: "08:30",
+          duration_min: 42,
+          done: false,
+          checkable: true,
+          colour: "#8b7cf6",
+          source: "manual",
+          editable: true,
+          links: [],
+          reminder_min: null,
+        },
+      ],
+    });
   });
 
   afterEach(() => {
@@ -104,9 +124,10 @@ describe("HomeModule", () => {
     expect(container.textContent).toContain("Tomar un vaso de agua");
     expect(container.textContent).toContain("Towel / Barbell Hang");
 
-    // Verify Bottom Row Panels
-    expect(container.textContent).toContain("Analítica Semanal");
+    // Verify Bottom Row Panels & Acceso Rápido
     expect(container.textContent).toContain("Progreso de Objetivos");
+    expect(container.textContent).toContain("Ahorros");
+    expect(container.textContent).toContain("Registrar Ahorro");
 
     act(() => {
       root.unmount();
@@ -150,6 +171,140 @@ describe("HomeModule", () => {
     });
 
     expect(exMarkSpy).toHaveBeenCalledWith("2026-09-26", "e1", true, 0, 0, "");
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
+  it("toggles collapsible sections like agenda and habits", async () => {
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(<HomeModule />);
+    });
+
+    // Check Agenda section title
+    expect(container.textContent).toContain("Agenda Diaria • Rutina");
+    expect(container.textContent).toContain("Back etc. Workout");
+
+    // Click Agenda chevron to collapse
+    const agendaToggle = container.querySelector('[data-testid="toggle-agenda"]') as HTMLDivElement;
+    expect(agendaToggle).not.toBeNull();
+
+    await act(async () => {
+      agendaToggle.click();
+    });
+
+    // Content inside should be collapsed
+    expect(container.textContent).not.toContain("Back etc. Workout");
+    expect(container.textContent).toContain("1 actividad");
+
+    // Click again to expand
+    await act(async () => {
+      agendaToggle.click();
+    });
+
+    expect(container.textContent).toContain("Back etc. Workout");
+
+    // Click Habits chevron to collapse
+    const habitsToggle = container.querySelector('[data-testid="toggle-habits"]') as HTMLDivElement;
+    expect(habitsToggle).not.toBeNull();
+    expect(container.textContent).toContain("Today's Habits");
+
+    await act(async () => {
+      habitsToggle.click();
+    });
+
+    // Content inside habits should be collapsed (no banner or bottom button)
+    expect(container.textContent).not.toContain("Today's Habits");
+
+    // Test Colapsar todo / Expandir todo button
+    const toggleAllBtn = Array.from(container.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("Colapsar todo") || b.textContent?.includes("Expandir todo")
+    );
+    expect(toggleAllBtn).not.toBeUndefined();
+
+    await act(async () => {
+      toggleAllBtn!.click();
+    });
+
+    // Everything collapsed
+    expect(container.textContent).not.toContain("Back etc. Workout");
+    expect(container.textContent).not.toContain("Today's Habits");
+    expect(toggleAllBtn!.textContent).toBe("Expandir todo");
+
+    await act(async () => {
+      toggleAllBtn!.click();
+    });
+
+    // Everything expanded again
+    expect(container.textContent).toContain("Back etc. Workout");
+    expect(container.textContent).toContain("Today's Habits");
+    expect(toggleAllBtn!.textContent).toBe("Colapsar todo");
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
+  it("opens search modal and searches concrete items across categories", async () => {
+    vi.spyOn(api, "noteIndex").mockResolvedValue([
+      { title: "Nota de Arquitectura Backend", path: "Backend/Arquitectura.md" } as any,
+    ]);
+
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(<HomeModule />);
+    });
+
+    // Find Search button in top bar or sidebar
+    const searchBtn = Array.from(container.querySelectorAll("button")).find(
+      (b) => b.textContent?.includes("Buscar") || b.getAttribute("aria-label") === "Buscar en Vault"
+    );
+    expect(searchBtn).toBeDefined();
+
+    await act(async () => {
+      searchBtn!.click();
+    });
+
+    // Modal should be open
+    expect(container.textContent).toContain("Vault Antigravity Search");
+    const searchInput = container.querySelector('input[placeholder*="Buscar notas, tareas"]') as HTMLInputElement;
+    expect(searchInput).not.toBeNull();
+
+    // Type query
+    await act(async () => {
+      searchInput.value = "arquitectura";
+      searchInput.dispatchEvent(new Event("change", { bubbles: true }));
+      searchInput.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    // Should find the task and note related to arquitectura
+    expect(container.textContent).toContain("Revisar arquitectura");
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
+  it("opens food search modal and displays presets", async () => {
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(<HomeModule />);
+    });
+
+    const addFoodBtns = Array.from(container.querySelectorAll("button")).filter(
+      (b) => b.textContent?.includes("Añadir alimento")
+    );
+    expect(addFoodBtns.length).toBeGreaterThan(0);
+
+    await act(async () => {
+      addFoodBtns[0]!.click();
+    });
+
+    // Modal should show
+    expect(container.textContent).toContain("Añadir Alimento a");
+    expect(container.textContent).toContain("Pechuga de Pollo 150g");
 
     act(() => {
       root.unmount();

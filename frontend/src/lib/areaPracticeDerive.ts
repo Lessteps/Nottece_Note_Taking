@@ -58,6 +58,22 @@ export function kataDatesOf(attempts: Record<string, Record<string, any>>, area?
   return out;
 }
 
+/** Los retos verificados distintos cuentan por archivo, incluso si se completan el mismo día. */
+export function verifiedKataFilesOf(attempts: Record<string, Record<string, any>>, area: { id: string; folder: string }): Set<string> {
+  const out = new Set<string>();
+  const marker = `/${PP_FOLDER}/${area.folder}/katas/`.toLowerCase();
+  for (const data of Object.values(attempts)) {
+    const notePath = `/${String(data?.note_path ?? "").replace(/\\/g, "/")}`.toLowerCase();
+    if (!notePath.includes(marker)) continue;
+    const valid = (Array.isArray(data?.attempts) ? data.attempts : []).some((attempt: Record<string, any>) => {
+      const skill = String(attempt?.skill ?? ""); const mode = String(attempt?.mode ?? "");
+      return (skill === KATA_SKILL || mode === KATA_SKILL || skill === `${KATA_SKILL}:${area.id}` || mode === `${KATA_SKILL}:${area.id}`) && kataAttemptVerified(attempt);
+    });
+    if (valid) out.add(notePath);
+  }
+  return out;
+}
+
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ID_RE = /^[a-z][a-z0-9-]{0,30}$/;
 
@@ -131,7 +147,15 @@ export function deriveAreaPractice(inp: AreaPracticeInput): AreaPracticeView[] {
     // sin importar en qué fecha. Los días de kata solo marcan el ritmo previsto (qué toca «hoy» y cuántos van atrasados).
     const doneAll = new Set<string>([...attemptDates, ...Object.entries(marks).filter(([, v]) => v === "done").map(([d]) => d)]);
     for (const d of extraDoneDates) doneAll.delete(d);
-    const doneCount = doneAll.size;
+    // Conserva el cómputo histórico por día y permite avanzar varios retos verificados en un día.
+    // Los adelantados ya consumidos se cuentan por separado para evitar duplicarlos.
+    const completedIndices = new Set([...verifiedKataFilesOf(inp.attempts, { id: a.areaId, folder })]
+      .map((file) => Number(/\/(\d+) [^/]+$/.exec(file)?.[1] ?? 0))
+      .filter((index) => index > 0 && index <= allDates.length && !consumed.has(index)));
+    const doneCount = Math.max(doneAll.size, completedIndices.size);
+    // Los registros antiguos solo guardaban el día: preserva ese progreso completando huecos en orden,
+    // pero no confundas un reto posterior verificado con el primero de la ruta.
+    for (let i = 1; completedIndices.size < doneCount && i <= dates.length; i++) completedIndices.add(orig(i));
     const doneDates = past.filter((d) => stateOf(d) === "done");
     const declared = declaredLevelOf(plan.preconditions?.levels, a.areaId);
     const level = kataLevel(declared, doneCount);
@@ -143,11 +167,12 @@ export function deriveAreaPractice(inp: AreaPracticeInput): AreaPracticeView[] {
 
     // katas hechos por habilidad (el kata nº i usa la habilidad `skillOfDay(i)`) frente a los que tocaban hasta hoy
     const skills: AreaSkillProgress[] = (AREA_SKILLS[a.areaId] ?? []).map((s) => ({ id: s.id, name: s.name, why: s.why, measure: s.measure, levels: s.levels, done: 0, planned: 0, pct: 0 }));
-    for (let i = 1; i <= Math.max(past.length, doneCount); i++) {
+    const lastCompletedPosition = Math.max(0, ...[...completedIndices].map((index) => origIdx.indexOf(index) + 1));
+    for (let i = 1; i <= Math.max(past.length, doneCount, lastCompletedPosition); i++) {
       const row = skills.find((s) => s.id === skillOfDay(a.areaId, orig(i))?.id);
       if (!row) continue;
       if (i <= past.length) row.planned++;
-      if (i <= doneCount) row.done++;
+      if (completedIndices.has(orig(i))) row.done++;
     }
     for (const j of consumedIdx) {
       const row = skills.find((s) => s.id === skillOfDay(a.areaId, j)?.id);
@@ -156,7 +181,7 @@ export function deriveAreaPractice(inp: AreaPracticeInput): AreaPracticeView[] {
     for (const s of skills) s.pct = s.planned ? Math.min(100, Math.round((s.done / s.planned) * 100)) : 0;
 
     // el siguiente kata SIN HACER (nº doneCount+1) y la fecha prevista en el calendario
-    const nextIndex = doneCount < dates.length ? doneCount + 1 : 0;
+    const nextIndex = dates.findIndex((_, i) => !completedIndices.has(orig(i + 1))) + 1;
     const plannedDate = nextIndex ? dates[nextIndex - 1] : undefined;
     // si ya le tocaba y hoy es día de kata, es «el kata de hoy» (aunque su fecha original fuera antes); si va adelantado, su fecha prevista
     const nextDate = plannedDate && plannedDate <= today && todayPlanned ? today : plannedDate;
@@ -175,7 +200,7 @@ export function deriveAreaPractice(inp: AreaPracticeInput): AreaPracticeView[] {
     const week: AreaWeekDay[] = Array.from({ length: 7 }, (_, i) => {
       const date = addDays(mon, i);
       const idx = dates.indexOf(date) + 1;
-      return { date, dow: i + 1, planned: idx > 0, state: idx > 0 ? (idx <= doneCount ? "done" : date > today ? "pending" : stateOf(date) === "skipped" ? "skipped" : "pending") : "none", today: date === today, ...(idx > 0 ? { index: orig(idx) } : {}) };
+      return { date, dow: i + 1, planned: idx > 0, state: idx > 0 ? (completedIndices.has(orig(idx)) ? "done" : date > today ? "pending" : stateOf(date) === "skipped" ? "skipped" : "pending") : "none", today: date === today, ...(idx > 0 ? { index: orig(idx) } : {}) };
     });
 
     // semanas del plan: título del proyecto del área, habilidades de sus katas, foco del proyecto full stack
@@ -192,7 +217,7 @@ export function deriveAreaPractice(inp: AreaPracticeInput): AreaPracticeView[] {
         skills: skillNames,
         focus: focusWeeks.get(i + 1) === a.areaId,
         current: today >= r.start && today <= r.end,
-        doneKatas: inWeek.filter((d) => dates.indexOf(d) < doneCount).length,
+        doneKatas: inWeek.filter((d) => completedIndices.has(orig(dates.indexOf(d) + 1))).length,
         katas: inWeek.length,
       };
     });
@@ -215,6 +240,7 @@ export function deriveAreaPractice(inp: AreaPracticeInput): AreaPracticeView[] {
         skip: kataSkipRule(doneDates.length, past.length),
         plannedDays: past.length,
         doneDays: doneCount,
+        completedIndices: [...new Set([...completedIndices, ...consumedIdx])].sort((x, y) => x - y),
         streak,
         todayPlanned,
         todayDone: todayPlanned && stateOf(today) === "done",

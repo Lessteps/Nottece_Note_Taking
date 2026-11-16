@@ -4,9 +4,18 @@ import {
   Calendar, CircleCheck, Copy, Dumbbell, Flag, Globe, House, Kanban, Minus, Moon, PanelLeft, PanelRight,
   PenLine, Pin, PinOff, Plus, Square, SquareCheck, Sun, Wallet, X, Cloud, CloudUpload,
   CircleAlert, Settings, FileCode2, FileText, LayoutDashboard, GraduationCap, Apple,
+  Search,
 } from "lucide-react";
 import type { ComponentType } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { formatMoney } from "../lib/money";
+import { useVaultEmojis } from "../lib/vaultEmoji";
+import { useHabits } from "../store/habits";
+import { useExercise } from "../store/exercise";
+import { useProjects } from "../store/projects";
+import { useGoals } from "../store/goals";
+import { useFinance } from "../store/finance";
+import { useTasks } from "../store/tasks";
 import { api, isElectron } from "../lib/bridge";
 import { useApp, type AppTab, type ModuleId } from "../store/app";
 import { cn, openMenu } from "./ui";
@@ -19,18 +28,19 @@ import { BUILD_STAMP } from "../buildInfo";
 
 // ── Module registry ─────────────────────────────────────────────────────────
 
-export const MODULES: Array<{ id: ModuleId; label: string; Icon: ComponentType<{ size?: number; strokeWidth?: number }> }> = [
-  { id: "home", label: "Vista General", Icon: House },
-  { id: "calendario", label: "Calendario", Icon: Calendar },
-  { id: "habits", label: "Hábitos", Icon: CircleCheck },
-  { id: "ejercicio", label: "Ejercicio", Icon: Dumbbell },
-  { id: "alimentacion", label: "Alimentación", Icon: Apple },
-  { id: "proyectos", label: "Proyectos", Icon: Kanban },
-  { id: "metas", label: "Metas", Icon: Flag },
-  { id: "finanzas", label: "Finanzas", Icon: Wallet },
-  { id: "notas", label: "Notas", Icon: PenLine },
-  { id: "tareas", label: "Tareas", Icon: SquareCheck },
-  { id: "web", label: "Navegador Web", Icon: Globe },
+export const MODULES: Array<{ id: ModuleId; label: string; badge?: string; Icon: ComponentType<{ size?: number; strokeWidth?: number; className?: string }> }> = [
+  { id: "home", label: "Vista General", badge: "Home", Icon: House },
+  { id: "calendario", label: "Calendario", badge: "Hoy", Icon: Calendar },
+  { id: "habits", label: "Hábitos", badge: "Rachas", Icon: CircleCheck },
+  { id: "ejercicio", label: "Ejercicio", badge: "Rutinas", Icon: Dumbbell },
+  { id: "alimentacion", label: "Alimentación", badge: "Macros", Icon: Apple },
+  { id: "proyectos", label: "Proyectos", badge: "Kanban", Icon: Kanban },
+  { id: "metas", label: "Metas", badge: "OKR", Icon: Flag },
+  { id: "finanzas", label: "Finanzas", badge: "Balance", Icon: Wallet },
+  { id: "notas", label: "Notas", badge: "Vault", Icon: PenLine },
+  { id: "tareas", label: "Tareas", badge: "Pendientes", Icon: SquareCheck },
+  { id: "web", label: "Navegador Web", badge: "Docs", Icon: Globe },
+  { id: "mentor", label: "Mentor", badge: "Ruta", Icon: GraduationCap },
 ];
 
 export function moduleLabel(id: ModuleId): string {
@@ -273,26 +283,30 @@ function WorkspaceIcons() {
   const explorerOpen = useApp((s) => s.explorerOpen);
   const toggleExplorer = useApp((s) => s.toggleExplorer);
 
-  // The three view shortcuts that used to live here are gone: the explorer panel
-  // carries its own tabs (Archivos · Buscar · Marcadores · Etiquetas · Grafo), so
-  // the strip gives that space back to the tabs. Only the panel toggle stays,
-  // because it is the one thing that belongs to the window and not to a module.
   return (
-    // Exactly as wide as the icon rail below it (w-12), full height, closed by a rule: the
-    // toggle sits directly above the rail and the tabs start after a clear divider.
-    <button
-      type="button"
-      title="Panel lateral izquierdo (Ctrl+\)"
-      aria-label="Panel lateral"
-      aria-pressed={explorerOpen}
-      onClick={toggleExplorer}
+    <div
       className={cn(
-        "grid w-12 flex-none place-items-center border-r border-line transition-colors hover:bg-hover",
-        explorerOpen ? "text-text" : "text-faint hover:text-text",
+        "flex flex-none items-center border-r border-line transition-all duration-200",
+        explorerOpen ? "w-64 px-3 justify-between" : "w-12 justify-center",
       )}
     >
-      <PanelLeft size={17} strokeWidth={1.8} />
-    </button>
+      <button
+        type="button"
+        title="Panel lateral izquierdo (Ctrl+\)"
+        aria-label="Panel lateral"
+        aria-pressed={explorerOpen}
+        onClick={toggleExplorer}
+        className={cn(
+          "grid h-7 w-7 place-items-center rounded-md text-faint transition-colors hover:bg-hover hover:text-text",
+          explorerOpen ? "text-text" : "hover:text-text",
+        )}
+      >
+        <PanelLeft size={17} strokeWidth={1.8} />
+      </button>
+      {explorerOpen && (
+        <span className="font-mono text-[10px] text-faint select-none">Ctrl+\</span>
+      )}
+    </div>
   );
 }
 
@@ -416,6 +430,26 @@ export function IconRail() {
   const setModule = useApp((s) => s.setModule);
   const theme = useApp((s) => s.theme);
   const toggleTheme = useApp((s) => s.toggleTheme);
+  const info = useApp((s) => s.info);
+  const explorerOpen = useApp((s) => s.explorerOpen);
+  const getEmoji = useVaultEmojis((s) => s.getEmoji);
+  const currentVaultEmoji = getEmoji(info?.vault_path || info?.vault_name);
+
+  // Dynamic metrics from actual app stores
+  const habits = useHabits((s) => s.habits);
+  const habitsLog = useHabits((s) => s.log);
+  const exerciseList = useExercise((s) => s.list);
+  const projectCards = useProjects((s) => s.cards);
+  const goalCards = useGoals((s) => s.cards);
+  const finSidebar = useFinance((s) => s.sidebar);
+  const tasks = useTasks((s) => s.tasks);
+  const todayPendingTasks = useMemo(() => {
+    return tasks.filter((t) => t.status !== "done" && t.status !== "cancelada").length;
+  }, [tasks]);
+
+  const doneHabitsCount = useMemo(() => {
+    return habitsLog ? Object.values(habitsLog.completed).filter(Boolean).length : 0;
+  }, [habitsLog]);
 
   // Highlight the icon when that module's tab is the active one
   const activeModuleId = (() => {
@@ -423,8 +457,186 @@ export function IconRail() {
     return tab?.kind === "module" ? tab.id : null;
   })();
 
+  const getBadge = (id: ModuleId, defaultBadge?: string) => {
+    switch (id) {
+      case "home":
+        return "Home";
+      case "calendario":
+        return "Hoy";
+      case "habits":
+        return habits.length ? `${doneHabitsCount}/${habits.length}` : (defaultBadge ?? "0/13");
+      case "ejercicio":
+        return exerciseList.length ? `${exerciseList.length} Ex` : (defaultBadge ?? "3 Ex");
+      case "alimentacion":
+        return "Macros";
+      case "proyectos":
+        return String(projectCards.length || 0);
+      case "metas":
+        return `${goalCards.length || 0} OKR`;
+      case "finanzas":
+        return finSidebar ? formatMoney(finSidebar.month.balance) : (defaultBadge ?? "$ 0.00");
+      case "tareas":
+        return `${todayPendingTasks} hoy`;
+      case "notas":
+        return "Vault";
+      case "web":
+        return "Docs";
+      case "mentor":
+        return "Ruta";
+      default:
+        return defaultBadge ?? "";
+    }
+  };
+
+  if (explorerOpen) {
+    return (
+      <aside
+        aria-label="Barra lateral de navegación"
+        className="flex w-64 flex-none flex-col justify-between border-r border-line bg-panel select-none z-30 transition-all duration-200"
+      >
+        <div className="flex flex-1 flex-col overflow-y-auto">
+          {/* Workspace Switcher */}
+          <div className="flex shrink-0 items-center justify-between border-b border-line p-3">
+            <button
+              type="button"
+              onClick={() => useVaultDialog.getState().set(true)}
+              title="Cambiar de vault (espacio de trabajo)"
+              aria-label="Cambiar de vault"
+              className="flex items-center space-x-2.5 overflow-hidden cursor-pointer rounded-lg p-1 hover:bg-hover transition text-left flex-1"
+            >
+              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded border border-line-strong bg-elevated text-xs font-bold text-accent shadow-xs">
+                {currentVaultEmoji}
+              </div>
+              <div className="truncate text-left">
+                <h1 className="truncate text-xs font-semibold text-text">
+                  {info?.vault_name || "knowledge-base"}
+                </h1>
+                <p className="font-mono text-[10px] text-faint">Modo Productividad</p>
+              </div>
+            </button>
+          </div>
+
+          {/* Quick Commands */}
+          <div className="shrink-0 space-y-0.5 border-b border-line p-2 text-dim">
+            <button
+              type="button"
+              onClick={() => useApp.getState().setSwitcher(true)}
+              className="flex w-full items-center space-x-2 rounded-md px-2.5 py-1.5 text-left text-xs transition hover:bg-hover hover:text-text"
+            >
+              <Search size={14} className="text-accent" />
+              <span>Buscar en Vault</span>
+              <span className="ml-auto font-mono text-[10px] text-faint">⌘K</span>
+            </button>
+          </div>
+
+          {/* Módulos del Sistema */}
+          <div className="flex-1 px-2 pt-3 pb-2">
+            <span className="mb-1 block px-2 font-mono text-[10px] font-semibold tracking-wider text-faint uppercase">
+              Módulos del Sistema
+            </span>
+
+            <nav className="space-y-0.5 text-xs text-dim" id="sidebarLinks">
+              {MODULES.map(({ id, label, badge: defaultBadge, Icon }) => {
+                const isActive = activeModuleId === id;
+                const badge = getBadge(id, defaultBadge);
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setModule(id)}
+                    className={cn(
+                      "flex w-full items-center space-x-2.5 rounded-md px-2.5 py-1.5 text-left font-medium transition text-xs",
+                      isActive
+                        ? "border border-accent/40 bg-accent-soft text-text shadow-xs"
+                        : "hover:bg-hover hover:text-text"
+                    )}
+                  >
+                    {id === "home" ? (
+                      <span className={cn(
+                        "h-2 w-2 rounded-full",
+                        isActive ? "bg-accent shadow-[0_0_8px_var(--nv-accent-soft)]" : "bg-faint"
+                      )} />
+                    ) : (
+                      <Icon size={14} className={isActive ? "text-accent" : "text-faint"} />
+                    )}
+                    <span className="truncate">{label}</span>
+                    <span
+                      className={cn(
+                        "ml-auto font-mono text-[10px]",
+                        isActive ? "text-accent-text font-semibold" : "text-faint"
+                      )}
+                    >
+                      {badge}
+                    </span>
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex shrink-0 items-center justify-between border-t border-line bg-surface p-3 text-xs text-dim">
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => setModule("home")}
+            className="flex items-center space-x-2 cursor-pointer hover:text-text transition"
+          >
+            <div className="flex h-6 w-6 items-center justify-center rounded-full border border-line-strong bg-elevated font-mono text-[10px] font-bold text-accent">
+              PH
+            </div>
+            <span className="font-medium text-text">Personal Hub</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              title="Configuración"
+              aria-label="Configuración"
+              onClick={() => useSettingsDialog.getState().set(true)}
+              className="rounded p-1 text-faint hover:bg-hover hover:text-text transition"
+            >
+              <Settings size={14} />
+            </button>
+            <button
+              type="button"
+              title="Cambiar tema"
+              aria-label="Cambiar tema"
+              onClick={toggleTheme}
+              className="rounded p-1 text-faint hover:bg-hover hover:text-text transition"
+            >
+              {theme === "dark" ? <Moon size={14} /> : <Sun size={14} />}
+            </button>
+          </div>
+        </div>
+      </aside>
+    );
+  }
+
   return (
-    <nav aria-label="Módulos" className="flex w-12 flex-none flex-col items-center gap-1.5 border-r border-line bg-bg py-3">
+    <nav aria-label="Módulos" className="flex w-12 flex-none flex-col items-center gap-1.5 border-r border-line bg-bg py-2.5 z-30 transition-all duration-200">
+      <button
+        type="button"
+        onClick={() => useVaultDialog.getState().set(true)}
+        title={`Cambiar de vault (${info?.vault_name || "knowledge-base"})`}
+        aria-label="Cambiar de vault"
+        className="grid h-8 w-8 place-items-center rounded-lg border border-line bg-elevated text-sm hover:border-accent hover:scale-105 transition cursor-pointer"
+      >
+        {currentVaultEmoji}
+      </button>
+
+      <button
+        type="button"
+        onClick={() => useApp.getState().setSwitcher(true)}
+        title="Buscar en Vault (Ctrl+K)"
+        aria-label="Buscar en Vault"
+        className="grid h-8 w-8 place-items-center rounded-lg text-accent hover:bg-accent-soft transition cursor-pointer"
+      >
+        <Search size={15} />
+      </button>
+
+      <div className="my-0.5 h-px w-6 bg-line" />
+
       {MODULES.map(({ id, label, Icon }) => (
         <button
           key={id}
@@ -433,13 +645,13 @@ export function IconRail() {
           aria-label={label}
           onClick={() => setModule(id)}
           className={cn(
-            "grid h-9 w-9 place-items-center rounded-lg transition-colors",
+            "grid h-8 w-8 place-items-center rounded-lg transition-colors",
             activeModuleId === id
               ? "bg-accent text-white shadow-[0_0_0_1px_var(--nv-accent)]"
               : "text-faint hover:bg-hover hover:text-text",
           )}
         >
-          <Icon size={18} strokeWidth={1.8} />
+          <Icon size={17} strokeWidth={1.8} />
         </button>
       ))}
       <div className="flex-1" />
@@ -448,18 +660,18 @@ export function IconRail() {
         title="Configuración"
         aria-label="Configuración"
         onClick={() => useSettingsDialog.getState().set(true)}
-        className="grid h-9 w-9 place-items-center rounded-lg text-faint hover:bg-hover hover:text-text"
+        className="grid h-8 w-8 place-items-center rounded-lg text-faint hover:bg-hover hover:text-text"
       >
-        <Settings size={17} strokeWidth={1.8} />
+        <Settings size={16} strokeWidth={1.8} />
       </button>
       <button
         type="button"
         title="Cambiar tema"
         aria-label="Cambiar tema"
         onClick={toggleTheme}
-        className="grid h-9 w-9 place-items-center rounded-lg text-faint hover:bg-hover hover:text-text"
+        className="grid h-8 w-8 place-items-center rounded-lg text-faint hover:bg-hover hover:text-text"
       >
-        {theme === "dark" ? <Moon size={17} strokeWidth={1.8} /> : <Sun size={17} strokeWidth={1.8} />}
+        {theme === "dark" ? <Moon size={16} strokeWidth={1.8} /> : <Sun size={16} strokeWidth={1.8} />}
       </button>
     </nav>
   );
@@ -474,6 +686,8 @@ export function StatusBar() {
   const cursor = useApp((s) => s.cursor);
   const mode = useApp((s) => s.mode);
   const info = useApp((s) => s.info);
+  const getEmoji = useVaultEmojis((s) => s.getEmoji);
+  const currentVaultEmoji = getEmoji(info?.vault_path || info?.vault_name);
   const words = note ? (note.raw.match(/\S+/g)?.length ?? 0) : 0;
   return (
     <footer className="flex h-7 flex-none items-center gap-3 border-t border-line bg-bg px-3 font-mono text-[10.5px] text-faint">
@@ -484,7 +698,7 @@ export function StatusBar() {
         onClick={() => useVaultDialog.getState().set(true)}
         className="flex items-center gap-1.5 text-mint hover:text-text"
       >
-        <Cloud size={12} /> {info?.vault_name ?? "vault"}
+        <span className="text-xs">{currentVaultEmoji}</span> {info?.vault_name ?? "vault"}
       </button>
       {note && (
         <>

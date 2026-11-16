@@ -222,6 +222,7 @@ export function ejecucionLinks(plan: Pick<MentorPlan, "subplans">, opts: RunLink
     link(RUN_TAB_GENERAL, "Hoy"),
     ...orderedAreas(plan).map((a) => link(runAreaTab(a.subplanId), a.area, a.areaId ? { areaId: a.areaId } : {})),
     ...(hasBasesRoute(plan) || opts.basesToday ? [link("bases", "Bases")] : []),
+    link("practicas-diarias", "Prácticas diarias"),
     link("proyectos", "Proyectos"),
     link(RUN_TAB_RECORDS, "Registros"),
   ];

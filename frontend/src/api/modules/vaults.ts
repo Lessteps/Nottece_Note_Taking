@@ -63,6 +63,35 @@ export function vaultsApi(app: AppState) {
     if (!win) {
       return { ok: false, fallback: true };
     }
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const electron = require("electron") as {
+        dialog?: {
+          showOpenDialogSync(w: unknown, opts: Record<string, unknown>): string[] | undefined;
+        };
+      };
+      if (electron?.dialog?.showOpenDialogSync) {
+        const result = electron.dialog.showOpenDialogSync(app.window, {
+          title: "Elige la carpeta de tu vault",
+          properties: ["openDirectory", "createDirectory"],
+          defaultPath: os.homedir(),
+        });
+        const chosen = result?.[0];
+        if (!chosen) return { ok: false };
+        const folder = path.resolve(String(chosen));
+        pickedVaults.add(folder);
+        return {
+          ok: true,
+          path: folder,
+          name: path.basename(folder),
+          ...scanVaultDir(folder),
+        };
+      }
+    } catch {
+      // ignore
+    }
+
     if (typeof win.create_file_dialog === "function") {
       const chosen = win.create_file_dialog(2, os.homedir());
       if (!chosen) {
@@ -78,7 +107,7 @@ export function vaultsApi(app: AppState) {
         ...scanVaultDir(folder),
       };
     }
-    return { ok: false };
+    return { ok: false, fallback: true };
   }
 
   return {
@@ -165,6 +194,7 @@ export function vaultsApi(app: AppState) {
         AppConfig.get_recent_vaults().map((p) => path.resolve(p))
       );
       const allowed =
+        folder === path.resolve(app.root) ||
         recent.has(folder) ||
         pickedVaults.has(folder) ||
         app.window === null ||

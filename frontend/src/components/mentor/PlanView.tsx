@@ -25,7 +25,7 @@ import { PlanChanges } from "./PlanChanges";
 import { PlanDeliverables } from "./PlanDeliverables";
 import { BackToTop, SkipLink, TabPanel, panelId } from "./planKit";
 import { agendaAreaKey, agendaDateKey, agendaViewKey, openPlanSection, planSectionKey, planTabKey, STATUS_COLOUR, STATUS_LABEL, usePlanData, type Loaded, type PlanTab } from "./planShared";
-import { modeSubject, normalizeTab, resolvePlanPage, selectPlaneacion, useMentorMode } from "./mentorNav";
+import { modeSubject, normalizeTab, resolvePlanPage, selectPlaneacion, useMentorMode, runTabKey, runAreaInteractiveTab } from "./mentorNav";
 import { ExecutionBar } from "./ExecutionBar";
 import { activeSectionOf, DEFAULT_SECTION, planSectionsOf, sectionAlias } from "./PlanSections";
 import { PlanRun } from "./PlanRun";
@@ -73,6 +73,7 @@ export function PlanView({ planId, source }: { planId: string; source: PlanSourc
   const archivePlan = useMentor((s) => s.archivePlan);
   const deletePlan = useMentor((s) => s.deletePlan);
   const plan = data?.plan ?? null;
+  const [runTab] = usePersistedNav<string>(runTabKey(planId), "general");
   const row = data?.plans.find((p) => p.id === planId);
   const summary = data?.derived?.summary;
 
@@ -80,6 +81,11 @@ export function PlanView({ planId, source }: { planId: string; source: PlanSourc
   // Dos caras: Planeación (armarlo y ajustarlo) y Ejecución (solo lectura, el día a día). El modo es global y lo elige la barra lateral.
   const row0 = useMentor((s) => s.plans.find((p) => p.id === planId));
   const [mode, setMode] = useMentorMode(modeSubject(row0, plan), planId);
+  const [dailyView] = usePersistedNav<string>(`mentor.dailyPracticeView.${planId}`, "informativa");
+  const interactiveCanvas =
+    mode === "ejecucion" &&
+    (!!plan?.subplans.some((s) => runTab === runAreaInteractiveTab(s.id)) ||
+      (runTab === "practicas-diarias" && dailyView === "interactiva"));
   // el «Mantener plan» fijo junto a las pestañas solo aparece cuando el banner ya salió de la vista
   useEffect(() => {
     const el = banner.current;
@@ -313,11 +319,11 @@ export function PlanView({ planId, source }: { planId: string; source: PlanSourc
     ) : null;
 
   return (
-    <div ref={scroller} className="nv-a11y relative flex min-h-0 min-w-0 flex-1 scroll-pt-40 flex-col overflow-y-auto overflow-x-hidden bg-surface text-[14px] text-text" data-testid="plan-view">
+    <div ref={scroller} className={cn("nv-a11y relative flex min-h-0 min-w-0 flex-1 scroll-pt-40 flex-col overflow-x-hidden bg-surface text-[14px] text-text", interactiveCanvas ? "overflow-hidden" : "overflow-y-auto")} data-testid="plan-view">
       <SkipLink targetId={CONTENT_ID}>Saltar al contenido</SkipLink>
       <div role="status" aria-live="polite" aria-atomic="true" className="sr-only" data-testid="plan-live">{live}</div>
-      <div className="mx-auto w-full min-w-0 max-w-[1400px] px-4 pb-24 @3xl:px-6">
-        {!scopePage && (
+      <div className={cn("mx-auto w-full min-w-0", interactiveCanvas ? "flex min-h-0 flex-1 flex-col" : "max-w-[1400px] px-4 pb-24 @3xl:px-6")}>
+        {!scopePage && !interactiveCanvas && (
         <header className="pt-5" data-testid="plan-head">
           <p className="font-mono text-[13px] uppercase tracking-wider text-faint">
             Plan de estudio{areas.length ? ` · ${areas.join(" · ")}` : ""}
@@ -350,7 +356,7 @@ export function PlanView({ planId, source }: { planId: string; source: PlanSourc
         </header>
         )}
 
-        <div className="mt-3 space-y-3">
+        <div className={cn("space-y-3", !interactiveCanvas && "mt-3")}>
           <LoadState warming={warming} error={error} empty={!data} onRetry={() => void reload()} />
           {data && !plan && (
             <div className="rounded-2xl border border-dashed border-line p-6 text-center text-[14px] text-dim" data-testid="plan-missing">
@@ -364,9 +370,9 @@ export function PlanView({ planId, source }: { planId: string; source: PlanSourc
 
         {data && plan && summary && (
           <>
-            {!scopePage && notices}
+            {!scopePage && !interactiveCanvas && notices}
             {mode === "ejecucion" ? (
-              <div id={CONTENT_ID} tabIndex={-1} className="mt-4 outline-none" data-testid="plan-content">
+              <div id={CONTENT_ID} tabIndex={-1} className={cn("outline-none", interactiveCanvas ? "flex min-h-0 flex-1 flex-col" : "mt-4")} data-testid="plan-content">
                 <PlanRun data={data} plan={plan} />
               </div>
             ) : (
@@ -470,7 +476,7 @@ export function PlanView({ planId, source }: { planId: string; source: PlanSourc
       </div>
       {/* la barra de generación en segundo plano es de planificar el plan: no estorba en el día a día (Ejecución) */}
       {plan && mode === "planeacion" && <ExecutionBar planId={plan.id} onOpenPlan={() => changeTab("plan")} />}
-      <BackToTop scroller={scroller} onTop={toTop} />
+      {!interactiveCanvas && <BackToTop scroller={scroller} onTop={toTop} />}
     </div>
   );
 }

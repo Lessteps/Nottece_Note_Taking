@@ -40,6 +40,14 @@ beforeEach(() => {
 });
 
 describe("study_topic_generate: solo el tema pedido", () => {
+  it("acepta un tema en una subcarpeta y no crea vistas de temas hermanos", async () => {
+    const rel = "Programación/5 Frontend/HTML/5.1 HTML";
+    fs.mkdirSync(path.join(root, rel), { recursive: true });
+    const api = studySpaceApi(new AppState(root));
+    await run(api, rel);
+    expect(fs.existsSync(path.join(root, rel, "5.1 HTML.practica.md"))).toBe(true);
+  });
+
   it("crea el archivo de práctica de ESE tema y no toca a los hermanos ni reescribe el temario o los mapas", async () => {
     const api = studySpaceApi(new AppState(root));
     await run(api, "Programación/1 Area/1.1 Uno");

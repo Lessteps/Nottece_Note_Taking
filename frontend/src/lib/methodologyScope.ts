@@ -55,35 +55,16 @@ export function curriculumIdsOfScope(scope: Pick<MethodologyScope, "kind" | "are
  * (HTML, CSS, funciones y métodos de un lenguaje) hay UNA nota por elemento / propiedad / método; los temas grandes se parten en subtemas lineales.
  */
 export const METHODOLOGY_RULES: readonly string[] = [
-  "Subjects learned by patterns (HTML elements, CSS properties, language functions and methods) need ONE topic per element / property / method — never a single note that lists them all. Think of anatomy: you do not study every bone on one sheet.",
-  "A topic that is a bundle of several concepts (functions, classes, selectors, layout…) must be split into ordered sub-topics: first an overview, then one sub-topic per piece, numbered N.M.K so learning is progressive and linear.",
-  "Every sub-topic goes deep on its single piece: what it does, every value or form it accepts, defaults, interaction with neighbouring pieces, one common mistake, one realistic use.",
-  "Order matters: foundations first, then the patterns that depend on them. If a topic needs another one that is missing, report the missing one first.",
+  "Choose a learning methodology appropriate to the subject, learner's current level and goal. Explain the choice and how notes, exercises, feedback and spaced review support it.",
+  "Split broad topics only when that makes learning and practice clearer. For HTML elements and CSS properties, consider individual reference topics where useful; do not impose that structure on other subjects.",
+  "Place prerequisites before dependent concepts and connect theory to realistic practice. Explain dependencies and identify missing or duplicated topics.",
+  "For every recommendation explain its educational purpose, assessment method and how it fits the existing plan. Ask the learner for missing context instead of inventing it.",
 ];
 
 /** El prompt de revisión: temas del alcance + reglas → la IA contesta qué temas faltan y cuáles partir. */
 export function reviewPrompt(scope: MethodologyScope, topics: readonly ScopeTopic[], areaFolders: readonly string[] = []): string {
   const list = topics.length ? topics.map((t) => `- ${t.title}${t.group ? ` [${t.group}]` : ""} (${t.folder})`).join("\n") : "(no topics yet)";
-  return [
-    `Review the study topics of «${scope.label}» against the methodology below and tell me what is MISSING or must be SPLIT. Do not rewrite anything yet.`,
-    "",
-    "## Methodology",
-    ...METHODOLOGY_RULES.map((r, i) => `${i + 1}. ${r}`),
-    "",
-    "## Topics I have now",
-    list,
-    ...(areaFolders.length ? ["", "## Vault folders for this scope", ...areaFolders.map((f) => `- ${f}`)] : []),
-    "",
-    "## Answer format",
-    "1. **Topics to split** — for each: the current topic, and the ordered sub-topics it should become (one per element / property / method).",
-    "2. **Missing topics** — grouped by subject, in learning order, each with a one-line reason.",
-    "3. **Missing areas or subjects** — anything a working junior needs in this scope that has no topic at all.",
-    "4. **Order problems** — any topic placed before one it depends on, numbering that skips or repeats, and generic topics that the one-piece-per-topic topics make redundant.",
-    "5. **Machine-readable order (REQUIRED, last thing in your answer)** — one fenced ```json block, exactly this shape, with the topic folders copied LITERALLY from the list above in the learning order you recommend (general topic first, then its pieces):",
-    '```json\n{ "order": ["<folder>", "<folder>"], "missing": ["<title of a missing topic>"] }\n```',
-    "The app reads that block and applies the order itself; you only provide the logic and the files, you do not decide how it is shown.",
-    "Be concrete: name every element, property or method. Do not pad.",
-  ].join("\n");
+  return [`Evaluate the learning methodology for «${scope.label}». The topic list is context; do not audit or reorder the plan.`, "", "## Principles", ...METHODOLOGY_RULES.map((r, i) => `${i + 1}. ${r}`), "", "## Current topics for context", list, ...(areaFolders.length ? ["", "## Scope folders", ...areaFolders.map((f) => `- ${f}`)] : []), "", "## Response", "1. Suitable learning approach and why it fits the subject and learner.", "2. How theory and examples should teach the concepts.", "3. Practice, feedback and assessment strategies, with examples.", "4. Review and evidence of mastery; adaptations for difficulty or missing context.", "5. Questions for the learner and limitations. Do not reorder topics or modify files."].join("\n");
 }
 
 /** Prompt para que una IA externa revise qué ÁREAS faltan en el plan (no los temas de cada una). */

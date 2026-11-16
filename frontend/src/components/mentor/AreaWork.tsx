@@ -24,7 +24,6 @@ import { AreaPracticeBlock } from "./AreaPracticeBlock";
 import { bumpPlanVersion } from "./extraKit";
 import { ExtraPracticeSection } from "./ExtraPracticeSection";
 import { paceNeedText, requiredPace } from "../../lib/planRequiredPace";
-import type { ReactNode } from "react";
 import { openTopic } from "./openTopic";
 import { ProgressBar } from "./parts";
 import { TopicRow, type BoardPractice, type BoardRow } from "./PlanBoard";
@@ -238,21 +237,7 @@ export function AreaWork({ plan, subplanId, planId, areaName, areaId, subtitle, 
     "all"
   );
 
-  // El plan tiene fecha de inicio y de fin fijas: lo que se dice por asignatura es el ritmo que hace falta para llegar a la de fin (nunca se recorta ni se mueve la fecha)
-  const paceLine = (id: string, title: string, total: number, done: number): ReactNode => {
-    if (!plan || !sub || total - done <= 0) return null;
-    const mine = sub.topics.filter((t) => (t.group ?? "core") === id && t.route !== "skipped" && t.route !== "optional");
-    const r = requiredPace({
-      today, start: plan.start, end: plan.end, studyDays: plan.preconditions?.studyDays ?? [], ...(plan.preconditions?.minutesPerDay ? { minutesPerDay: plan.preconditions.minutesPerDay } : {}),
-      groups: [{ id, title, total, pending: total - done, totalMinutes: mine.reduce((n, t) => n + (t.estMinutes ?? 0), 0) }],
-    });
-    const endLabel = new Date(`${plan.end}T00:00:00`).toLocaleDateString("es", { day: "numeric", month: "short" });
-    return (
-      <span className="basis-full text-[12px] text-dim" data-testid={`subject-pace-${id}`} title="Ritmo necesario para terminar esta asignatura en la fecha de fin del plan (días de estudio)">
-        Ritmo necesario: {paceNeedText(r.groups[0]!, endLabel)}
-      </span>
-    );
-  };
+  // El plan tiene fecha de inicio y de fin fijas: el ritmo necesario se pre-calcula por lotes en todaySubjectGroups
   const subjectGroups = useMemo(() => {
     // los fundamentos («Bases») no son una asignatura del área: tienen su propia pestaña
     const own = (sub?.groups ?? []).filter((g) => g.kind !== "bases");
@@ -293,6 +278,69 @@ export function AreaWork({ plan, subplanId, planId, areaName, areaId, subtitle, 
   const pa = practice?.areas.find((x) => x.areaId === areaId);
   const reviewsDue = buckets.today.length;
   const pendingToday = todayRows.filter((r) => !r.done).length;
+
+  const todaySubjectGroups = useMemo(() => {
+    if (!sub || view !== "hoy") return [];
+    const topicGroup = new Map<string, string>();
+    const groupFolders = new Map<string, Set<string>>();
+    const groupEstMinutes = new Map<string, number>();
+
+    for (const g of subjectGroups) {
+      groupFolders.set(g.id, new Set<string>());
+      groupEstMinutes.set(g.id, 0);
+    }
+
+    for (const t of sub.topics) {
+      const gid = t.group ?? "core";
+      topicGroup.set(t.folder, gid);
+      const set = groupFolders.get(gid);
+      if (set) set.add(t.folder);
+      if (t.route !== "skipped" && t.route !== "optional") {
+        groupEstMinutes.set(gid, (groupEstMinutes.get(gid) ?? 0) + (t.estMinutes ?? 0));
+      }
+    }
+
+    // Required pace calculation in a single batch
+    const groupsToPace = subjectGroups
+      .filter((g) => g.total - g.done > 0)
+      .map((g) => ({
+        id: g.id,
+        title: g.title,
+        total: g.total,
+        pending: g.total - g.done,
+        totalMinutes: groupEstMinutes.get(g.id) ?? 0,
+      }));
+
+    const paceNeedMap = new Map<string, string>();
+    if (plan && groupsToPace.length > 0) {
+      const r = requiredPace({
+        today,
+        start: plan.start,
+        end: plan.end,
+        studyDays: plan.preconditions?.studyDays ?? [],
+        ...(plan.preconditions?.minutesPerDay ? { minutesPerDay: plan.preconditions.minutesPerDay } : {}),
+        groups: groupsToPace,
+      });
+      const endLabel = new Date(`${plan.end}T00:00:00`).toLocaleDateString("es", { day: "numeric", month: "short" });
+      for (const g of r.groups) {
+        paceNeedMap.set(g.id, paceNeedText(g, endLabel));
+      }
+    }
+
+    return subjectGroups.map((grp) => {
+      const inGroup = groupFolders.get(grp.id) ?? new Set<string>();
+      const grpRows = lists.hoy.filter((r) => (topicGroup.get(r.folder) ?? "core") === grp.id);
+      const nextRows = fillSubjectRows(rows, inGroup, grpRows);
+      const paceText = paceNeedMap.get(grp.id);
+
+      return {
+        grp,
+        grpRows,
+        nextRows,
+        paceText,
+      };
+    });
+  }, [sub, view, subjectGroups, lists.hoy, rows, today, plan]);
 
   return (
     <section aria-label={`Trabajo de ${areaName}`} data-testid="area-work" className="min-w-0 space-y-4">
@@ -397,14 +445,7 @@ export function AreaWork({ plan, subplanId, planId, areaName, areaId, subtitle, 
             {view === "hoy" && lists.hoy.length === 0 && <p className="mb-2 px-1.5 text-[14px] text-dim" data-testid="work-empty">Hoy no toca ningún tema de esta ruta. Estas son tus asignaturas: puedes adelantar los próximos temas de cualquiera.</p>}
             {view === "hoy" && sub ? (
               <div className="space-y-4">
-                {subjectGroups.map((grp) => {
-                  const grpRows = lists.hoy.filter((r) => {
-                    const t = sub.topics.find((x) => x.folder === r.folder);
-                    return (t?.group ?? "core") === grp.id;
-                  });
-                  // ninguna asignatura sale con menos de MIN_SUBJECT_TOPICS temas: a los de hoy se suman los siguientes de su ruta (candidatos a adelantar; el calendario no cambia)
-                  const inGroup = new Set(sub.topics.filter((t) => (t.group ?? "core") === grp.id).map((t) => t.folder));
-                  const nextRows = fillSubjectRows(rows, inGroup, grpRows);
+                {todaySubjectGroups.map(({ grp, grpRows, nextRows, paceText }) => {
                   // TODAS las asignaturas con temas se ven en Ejecución, también las que hoy no tienen nada (HTML, CSS…): así se pueden seguir y adelantar
                   if (!grpRows.length && grp.total === 0) return null;
                   return (
@@ -414,7 +455,11 @@ export function AreaWork({ plan, subplanId, planId, areaName, areaId, subtitle, 
                         <span className="text-[12px] font-medium text-dim" data-testid={`subject-progress-inline-${grp.id}`}>
                           {grp.done}/{grp.total} ({grp.pct}%)
                         </span>
-                        {paceLine(grp.id, grp.title, grp.total, grp.done)}
+                        {paceText && (
+                          <span className="basis-full text-[12px] text-dim" data-testid={`subject-pace-${grp.id}`} title="Ritmo necesario para terminar esta asignatura en la fecha de fin del plan (días de estudio)">
+                            Ritmo necesario: {paceText}
+                          </span>
+                        )}
                       </div>
                       {grpRows.length ? (
                         <ul className="space-y-1" aria-label={grp.title} data-testid="work-list">

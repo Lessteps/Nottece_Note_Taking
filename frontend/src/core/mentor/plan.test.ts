@@ -229,6 +229,14 @@ describe("PlanStore / sanitizePlan", () => {
   });
   afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 
+  it("conserva la fecha de revisión de un tema al guardar y cargar", () => {
+    const st = new PlanStore(dir);
+    const plan = buildPlan([{ area: "A", objective: "o", topics: [T(1)] }], { month: "2026-10", hoursPerWeek: 3 }).plan;
+    plan.subplans[0]!.topics[0]!.revisionAddedAt = "2026-11-13";
+    st.save(plan);
+    expect(st.load("2026-10")!.subplans[0]!.topics[0]!.revisionAddedAt).toBe("2026-11-13");
+  });
+
   it("guarda y carga en .notevault/mentor/plans/<mes>.json y lista los meses", () => {
     const st = new PlanStore(dir);
     expect(st.months()).toEqual([]);

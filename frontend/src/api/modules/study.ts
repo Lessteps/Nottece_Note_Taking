@@ -5,6 +5,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { topicLearningContext } from "./learningContext.js";
 import { ApiError } from "../../core/errors.js";
 import { parseFrontmatter } from "../../core/frontmatter.js";
 import { loadCard } from "../../core/practice/cards.js";
@@ -383,6 +384,8 @@ export async function reevaluateTopic(app: AppState, folder: string, opts: { cre
     currentSkills: manifest.skills,
   });
 
+  const context = topicLearningContext(app, normFolder);
+  if (context) messages.push({ role: "user", content: context });
   const reply = await askStructured(cfg, messages);
   let plan = parsePracticePlan(reply, catalog, keyOf(cls));
   if (!plan) {
@@ -1030,7 +1033,7 @@ export function studyApi(app: AppState) {
           quantity: qty,
           assistance: ast,
           planCount: aiCount,
-          learning: fillOnly ? [] : learningPromptLines(app.root, normFolder.replace(/\\/g, "/"), skill),
+          learning: [...(fillOnly ? [] : learningPromptLines(app.root, normFolder.replace(/\\/g, "/"), skill)), topicLearningContext(app, normFolder)].filter(Boolean),
           taughtBefore: taughtBeforeOf(absDir),
           ...vocabularyWords(app, found.manifest.subject, skill, found.manifest.title),
         },
