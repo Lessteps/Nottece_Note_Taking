@@ -444,7 +444,7 @@ export const api = {
   mentorAreaPracticeOn: (id: string, date: string) => call<{ items: Array<{ areaId: string; label: string; day: number; rel: string; title: string; skill: string; level: number; minutes: number }> }>("mentor_area_practice_on", { id, date }),
   /** Acceso directo al kata de un área: lo crea si falta (nunca sobrescribe) y devuelve su ruta en la vault. */
   mentorAreaKatasAhead: (id: string, area?: string) => call<{ katas: import("./types").MentorKataAhead[] }>("mentor_area_katas_ahead", { id, ...(area ? { area } : {}) }),
-  mentorAreaKataOpen: (id: string, areaId: string, date?: string) => call<{ rel: string; created: boolean; date: string }>("mentor_area_kata_open", { id, areaId, ...(date ? { date } : {}) }),
+  mentorAreaKataOpen: (id: string, areaId: string, date?: string) => call<{ rel: string; created: boolean; date: string; projectRepo?: string | null; projectWarning?: string }>("mentor_area_kata_open", { id, areaId, ...(date ? { date } : {}) }),
   /** Deja la carpeta de cada área del plan en programming_practice (README, .practica.md, habilidades…). Nunca sobrescribe. */
   mentorAreaPracticeSetup: (id: string) => call<{ created: string[]; folders: string[]; view: import("./types").MentorAreaPractice }>("mentor_area_practice_setup", { id }),
   mentorAreaKataMark: (id: string, areaId: string, date: string, status: "done" | "skipped" | null) => call<import("./types").MentorAreaPractice>("mentor_area_kata_mark", { id, areaId, date, status }),

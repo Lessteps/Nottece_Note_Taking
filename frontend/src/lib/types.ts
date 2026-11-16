@@ -923,6 +923,7 @@ export interface PracticeExercise {
 export interface PracticeGraded { graded: true; result: PracticeResult; quality: number | null; history: PracticeAttempt[]; solution?: string; submissionPath?: string; submissionError?: string }
 export interface PracticeWaiting {
   graded: false;
+  submissionError?: string;
   waiting?: boolean;
   request?: string;
   request_path?: string;

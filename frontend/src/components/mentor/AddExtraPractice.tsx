@@ -162,6 +162,8 @@ export function AddExtraPractice({ planId, date, area, lockSession, minDate, max
     try {
       const r = await api.mentorAreaKataOpen(planId, k.areaId, k.date);
       await useApp.getState().openNote(r.rel);
+      if (r.projectWarning) toast("error", r.projectWarning);
+      else if (r.projectRepo) toast("info", `Repositorio mensual: ${r.projectRepo}`);
     } catch (e) {
       toast("error", (e as Error).message);
     }

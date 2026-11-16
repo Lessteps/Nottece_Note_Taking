@@ -16,6 +16,8 @@ import { addDays } from "../../lib/planTime.js";
 import { AppState } from "../appState.js";
 import { clearVaultScanCache } from "../vaultScan.js";
 import { mentorApi } from "./mentor.js";
+import { practiceApi } from "./practice.js";
+import * as aiClient from "../../core/aiClient.js";
 
 let dir: string;
 let app: AppState;
@@ -181,6 +183,45 @@ describe("mentor_area_kata_open: el acceso directo al kata siempre existe", () =
     expect(again.created).toBe(false);
     expect(again.rel).toBe(r.rel);
     expect(fs.readFileSync(abs, "utf-8")).toContain("mi respuesta");
+  });
+
+  it("abre los katas de dos áreas en el mismo repositorio mensual y guarda la entrega", async () => {
+    const backend: any = api().mentor_area_kata_open({ id, areaId: "backend", date: TODAY });
+    const frontend: any = api().mentor_area_kata_open({ id, areaId: "frontend", date: TODAY });
+    expect(backend.projectRepo).toBeTruthy();
+    expect(frontend.projectRepo).toBe(backend.projectRepo);
+    expect(fs.existsSync(path.join(dir, backend.projectRepo, ".git"))).toBe(true);
+    Object.assign(hoisted.store, { provider: "lmstudio", base_url: "http://127.0.0.1:1234/v1", model: "test" });
+    const spy = vi.spyOn(aiClient, "sendChat").mockResolvedValue(JSON.stringify({ score: 80, verdict: "partial", rubric: [true], errors: [], feedback: "Bien", next_step: "Continuar", example: "" }));
+    try {
+      const queued: any = await practiceApi(app).practice_grade(backend.rel, "print('borrador')", 0, 0, false, "handoff");
+      expect(queued.graded).toBe(false);
+      const kataDir = path.join(dir, backend.projectRepo, "backend", "kata-001");
+      expect(fs.readdirSync(kataDir).filter((f) => f.startsWith("solucion-"))).toHaveLength(1);
+      const result: any = await practiceApi(app).practice_grade(backend.rel, "print('hola')");
+      expect(result.graded).toBe(true);
+      expect(result.submissionError).toBeUndefined();
+      const solutions = fs.readdirSync(kataDir).filter((f) => f.startsWith("solucion-"));
+      expect(solutions).toHaveLength(2);
+      expect(solutions.map((f) => fs.readFileSync(path.join(kataDir, f), "utf8"))).toContain("print('hola')");
+    } finally { spy.mockRestore(); }
+  });
+
+  it("vincula una entrega abierta desde el explorador cuando pertenece a un único plan", async () => {
+    const pp = path.join(dir, "Programación", "programming_practice");
+    const created = createAreaPracticeFolders({ ppDir: pp, areas: ["backend"], katasPerArea: 1 });
+    const rel = `Programación/programming_practice/${created.created.find((f) => f.includes("/katas/001 "))}`;
+    Object.assign(hoisted.store, { provider: "lmstudio", base_url: "http://127.0.0.1:1234/v1", model: "test" });
+    const spy = vi.spyOn(aiClient, "sendChat").mockResolvedValue(JSON.stringify({ score: 80, verdict: "partial", rubric: [true], errors: [], feedback: "Bien", next_step: "Continuar", example: "" }));
+    try {
+      const result: any = await practiceApi(app).practice_grade(rel, "respuesta directa");
+      expect(result.graded).toBe(true);
+      expect(result.submissionError).toBeUndefined();
+      const repoRoot = path.join(pp, "projects", "daily-practice", id);
+      const month = fs.readdirSync(repoRoot)[0]!;
+      const solutionDir = path.join(repoRoot, month, "backend", "kata-001");
+      expect(fs.readdirSync(solutionDir).filter((f) => f.startsWith("solucion-"))).toHaveLength(1);
+    } finally { spy.mockRestore(); }
   });
 
   it("rechaza un área que no es del plan", () => {

@@ -1,3 +1,4 @@
+import { ensureDailyProjectBinding, saveDailyProjectAnswer } from "../../core/mentor/dailyProjectRepo.js";
 // Ported from notevault_app/webapp/modules/practice.py
 // Práctica: exercise notes (frontmatter `type: exercise`) answered in the
 // app and graded by an AI teacher (HTTP, a web chat through the clipboard, or
@@ -179,6 +180,12 @@ function practiceApply(
     const attempts = new PracticeAttemptStore(app.root).attempts(ex.note_id);
     submissionPath = writePracticeSubmission(app.root, ex, app.rel(p), attempt, attempts.length);
   } catch (e) { submissionError = (e as Error).message; }
+  try {
+    if (ex.mode === "pp_kata") ensureDailyProjectBinding(app.root, ex.note_id, app.rel(p), String(ex.frontmatter.area ?? ""), Number(ex.frontmatter.kata_day));
+    saveDailyProjectAnswer(app.root, ex.note_id, app.rel(p), answer, ex.code_lang || ex.subject);
+  } catch (e) {
+    submissionError = [submissionError, `No se pudo guardar la solución en el proyecto mensual: ${(e as Error).message}`].filter(Boolean).join("; ");
+  }
   clearStudySnapshotCache();
   // The topic's review note follows every graded attempt, whatever the skill.
   try {
@@ -369,6 +376,13 @@ export function practiceApi(app: AppState) {
 
       const [p, ex] = getExercise(app, rel);
       new PracticeAttemptStore(app.root).saveDraft(ex.note_id, app.rel(p), ans);
+      let projectWarning = "";
+      if (ex.mode === "pp_kata") {
+        try {
+          ensureDailyProjectBinding(app.root, ex.note_id, app.rel(p), String(ex.frontmatter.area ?? ""), Number(ex.frontmatter.kata_day));
+          saveDailyProjectAnswer(app.root, ex.note_id, app.rel(p), ans, ex.code_lang || ex.subject);
+        } catch (e) { projectWarning = `No se pudo guardar en el proyecto mensual: ${(e as Error).message}`; }
+      }
       // A dictation is graded by comparing it with its transcript: exact, instant, offline and with no AI at all.
       if (isEnglishSubject(ex.subject) && ex.mode === "ls_dictation" && (ex.audio_text || "").trim()) {
         return practiceApply(app, p, ex, gradeDictation(ex.audio_text!, ans, ex.rubric.length), "local", ans, hints, secs, seen);
@@ -392,6 +406,7 @@ export function practiceApi(app: AppState) {
           request_file: reqRel,
           response_file: respPath,
           request_path: reqAbs,
+          ...(projectWarning ? { submissionError: projectWarning } : {}),
         };
         if (via !== "handoff") {
           out.bridge = true;

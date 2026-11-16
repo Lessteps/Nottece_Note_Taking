@@ -233,6 +233,7 @@ export function PracticeView({ note }: { note: OpenNote }) {
           await copyText(invocation);
           setStatus({ text: "Solicitud escrita y una instrucción lista para pegar copiada al portapapeles. Pégala en tu IA de editor (Claude Code, Antigravity…); la corrección aparecerá aquí sola cuando escriba el archivo." });
         }
+        if (r.submissionError) setStatus({ text: `La solicitud está lista, pero ${r.submissionError}`, error: true });
       }
     } catch (e) {
       setStatus({

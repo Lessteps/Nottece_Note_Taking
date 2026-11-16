@@ -140,6 +140,8 @@ export function DailyAreaPractice({ plan, data, m, practice, onProjects }: { pla
     try {
       const result = await api.mentorAreaKataOpen(plan.id, areaId, date);
       await useApp.getState().openNote(result.rel);
+      if (result.projectWarning) toast("error", result.projectWarning);
+      else if (result.projectRepo) toast("info", `Repositorio mensual: ${result.projectRepo}`);
     } catch (error) { toast("error", (error as Error).message || "No se pudo abrir el reto."); }
   };
 

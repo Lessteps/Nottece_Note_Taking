@@ -51,9 +51,52 @@ export function InteractiveRoute({ area, rows, onInformative, routes }: { area: 
     window.addEventListener("keydown", onZoomKey);
     return () => window.removeEventListener("keydown", onZoomKey);
   }, [visible]);
-  const startPan = (event: React.PointerEvent<HTMLDivElement>) => { if (!spaceHeld.current && event.button !== 1) return; const box = rail.current; if (!box) return; dragging.current = { x: event.clientX, y: event.clientY, left: box.scrollLeft, top: box.scrollTop }; setIsPanning(true); box.setPointerCapture(event.pointerId); };
-  const pan = (event: React.PointerEvent<HTMLDivElement>) => { if (dragging.current && rail.current) { rail.current.scrollLeft = dragging.current.left - (event.clientX - dragging.current.x); rail.current.scrollTop = dragging.current.top - (event.clientY - dragging.current.y); } };
-  const endPan = () => { dragging.current = null; setIsPanning(false); };
+  useEffect(() => {
+    const el = rail.current;
+    if (!el) return;
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const delta = e.deltaY < 0 ? 0.1 : -0.1;
+        setZoom((z) => Math.min(2.5, Math.max(0.25, +(z + delta).toFixed(2))));
+      }
+    };
+    el.addEventListener("wheel", handleWheel, { passive: false });
+    return () => el.removeEventListener("wheel", handleWheel);
+  }, []);
+  const startPan = (event: React.PointerEvent<HTMLDivElement>) => {
+    const isButton = (event.target as HTMLElement).closest("button");
+    if (isButton && !spaceHeld.current) return;
+    if (event.button !== 0 && event.button !== 1) return;
+    const box = rail.current;
+    if (!box) return;
+    dragging.current = { x: event.clientX, y: event.clientY, left: box.scrollLeft, top: box.scrollTop };
+    setIsPanning(true);
+    try {
+      box.setPointerCapture?.(event.pointerId);
+    } catch {
+      // ignore
+    }
+  };
+  const pan = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (dragging.current && rail.current) {
+      rail.current.scrollLeft = dragging.current.left - (event.clientX - dragging.current.x);
+      rail.current.scrollTop = dragging.current.top - (event.clientY - dragging.current.y);
+    }
+  };
+  const endPan = (event?: React.PointerEvent<HTMLDivElement>) => {
+    if (event && rail.current) {
+      try {
+        if (rail.current.hasPointerCapture?.(event.pointerId)) {
+          rail.current.releasePointerCapture?.(event.pointerId);
+        }
+      } catch {
+        // ignore
+      }
+    }
+    dragging.current = null;
+    setIsPanning(false);
+  };
   const paths = routes ?? [{ area, rows }];
   const allRows = paths.flatMap((path) => path.rows);
   const laneHeight = 300;
@@ -80,9 +123,9 @@ export function InteractiveRoute({ area, rows, onInformative, routes }: { area: 
 
   return (
     <section className="relative flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-panel" data-testid="interactive-route">
-      <header className="relative z-20 flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-line bg-card px-3 py-2"><div className="min-w-[130px] flex-1"><h2 className="font-bold text-text">Sincronía · {area}</h2><p className="text-xs text-dim">{completed} de {rows.length} temas completados · Espacio + arrastrar para moverte</p></div><button type="button" onClick={onInformative} className="rounded-lg border border-line px-3 py-2 text-sm text-text">Ruta informativa</button><button type="button" onClick={() => setZoom(z => Math.max(.25, +(z - .25).toFixed(2)))} aria-label="Alejar" className="p-2"><ZoomOut size={18}/></button><button type="button" onClick={() => setZoom(1)} aria-label="Restablecer zoom" className="p-2"><Maximize2 size={18}/></button><button type="button" onClick={() => setZoom(z => Math.min(2.5, +(z + .25).toFixed(2)))} aria-label="Acercar" className="p-2"><ZoomIn size={18}/></button></header>
+      <header className="relative z-20 flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-line bg-card px-3 py-2"><div className="min-w-[130px] flex-1"><h2 className="font-bold text-text">Sincronía · {area}</h2><p className="text-xs text-dim">{completed} de {rows.length} temas completados · Arrastra para moverte</p></div><button type="button" onClick={onInformative} className="rounded-lg border border-line px-3 py-2 text-sm text-text">Ruta informativa</button><button type="button" onClick={() => setZoom(z => Math.max(.25, +(z - .25).toFixed(2)))} aria-label="Alejar" className="p-2"><ZoomOut size={18}/></button><button type="button" onClick={() => setZoom(1)} aria-label="Restablecer zoom" className="p-2"><Maximize2 size={18}/></button><button type="button" onClick={() => setZoom(z => Math.min(2.5, +(z + .25).toFixed(2)))} aria-label="Acercar" className="p-2"><ZoomIn size={18}/></button></header>
       {allRows.length === 0 ? <p className="p-28 text-dim">Esta área todavía no tiene temas en su ruta.</p> : <>
-        <div ref={rail} tabIndex={0} role="region" aria-label={`Lienzo del recorrido de ${area}. Mantén Espacio y arrastra para desplazarte`} onPointerDown={startPan} onPointerMove={pan} onPointerUp={endPan} onPointerCancel={endPan} className={cn("relative min-h-0 flex-1 overflow-auto bg-panel focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent", isPanning ? "cursor-grabbing select-none" : "cursor-grab")} data-testid="route-rail">
+        <div ref={rail} tabIndex={0} role="region" aria-label={`Lienzo del recorrido de ${area}. Arrastra para desplazarte`} onPointerDown={startPan} onPointerMove={pan} onPointerUp={endPan} onPointerCancel={endPan} className={cn("relative min-h-0 flex-1 overflow-auto bg-panel focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent", isPanning ? "cursor-grabbing select-none" : "cursor-grab")} data-testid="route-rail">
           <div style={{ width: (canvasWidth + 128) * zoom, height: canvasHeight * zoom }}><div className="relative" style={{ width: canvasWidth + 128, height: canvasHeight, transform: `scale(${zoom})`, transformOrigin: "top left" }}><svg aria-hidden="true" className="pointer-events-none absolute inset-0" width={canvasWidth + 128} height={canvasHeight}>{branches.map((branch, index) => <path key={index} d={`M ${branch.fromX} ${branch.fromY} C ${branch.fromX + 100} ${branch.fromY}, ${branch.toX - 100} ${branch.toY}, ${branch.toX} ${branch.toY}`} fill="none" stroke="var(--nv-accent)" strokeWidth="6" strokeOpacity=".7" />)}</svg>{paths.map((path, sectionIndex) => { const trackCurrent = path.rows.find((item) => !item.done && !item.unlockOn) ?? path.rows.find((item) => !item.done); return <section key={`${path.area}-${sectionIndex}`} className="absolute w-max text-left" style={{ left: 48 + (offsets[sectionIndex] ?? 0), top: 40 + sectionIndex * laneHeight }} aria-label={`Ruta de ${path.area}`}><h4 className="mb-3 inline-flex rounded-full border border-accent/30 bg-accent-soft px-4 py-2 text-sm font-bold text-accent-text"><span className="mr-2 font-mono text-xs opacity-70">{String(sectionIndex + 1).padStart(2, "0")}</span>{path.area} · {path.rows.filter((row) => row.done).length}/{path.rows.length}</h4><ol className="flex w-max items-center py-4" aria-label={`Temas de ${path.area} en orden`}>
             {path.rows.map((row, index) => { const active = row.folder === selected?.folder; const isCurrent = row.folder === trackCurrent?.folder; const locked = !!row.unlockOn; const label = row.found === false ? "No creado todavía" : row.done ? "Completado" : locked ? "Bloqueado" : isCurrent ? "Continuar" : "Pendiente"; return <li key={row.folder} className="relative flex h-[156px] w-[180px] flex-none flex-col items-center text-center" data-testid="route-node" data-state={row.done ? "done" : locked ? "locked" : isCurrent ? "current" : "pending"}>
               {index < path.rows.length - 1 && <span aria-hidden className={cn("absolute left-1/2 top-[54px] h-1 w-full rounded-full", row.done ? "bg-accent" : "bg-line-strong")} />}<span className={cn("relative z-10 mb-2 min-h-5 rounded-full px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide", row.found === false ? "text-danger" : isCurrent && !row.done ? "bg-accent-soft text-accent-text" : "text-faint")}>{row.title.match(/^2\.1\.3(?:\s|$)/) && row.found !== false ? "Aviso · " : ""}{label}</span>

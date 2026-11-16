@@ -13,6 +13,11 @@
 //    Escribe SOLO `.notevault/mentor/area-practice/<plan>.json` (datos de la app), nunca notas de la vault.
 
 import * as path from "node:path";
+import * as fs from "node:fs";
+import { parseExercise } from "../../core/practice/exerciseNote.js";
+import { bindDailyProject } from "../../core/mentor/dailyProjectRepo.js";
+import { planChain } from "../../lib/planChain.js";
+import { buildSchedule, progressPlan } from "../../lib/planSchedule.js";
 import { ApiError } from "../../core/errors.js";
 import { createAreaPracticeFolders } from "../../core/mentor/areaPracticeFolders.js";
 import { AreaPracticeStore, deriveAreaPractice, existingAreaFiles } from "../../core/mentor/areaPracticeState.js";
@@ -131,7 +136,18 @@ export function mentorAreaPracticeApi(app: AppState, hooks: { today: () => strin
       const base = app.rel(ppDir).split(path.sep).join("/");
       const rel = `${base}/${found.rel}`;
       if (r.failed.length && !r.created.length && !r.skipped.length) throw new ApiError(`No se pudo crear el kata: ${r.failed[0]!.reason}`);
-      return { rel, created: r.created.includes(found.rel), date: found.date };
+      const chain = planChain(plan as never, buildSchedule(progressPlan(plan as never, { today: hooks.today() })));
+      const contains = (m: (typeof chain.months)[number]) => m.weeks.some((w) => found.date >= w.start && found.date <= w.end);
+      const month = chain.months.find(contains) ?? planChain(plan as never, buildSchedule(plan as never)).months.find(contains);
+      let projectRepo: string | null = null;
+      let projectWarning = "";
+      try { if (month) {
+        const noteId = parseExercise(fs.readFileSync(path.join(app.root, rel), "utf8"), rel).note_id;
+        projectRepo = bindDailyProject(app.root, ppDir, { planId: plan.id, monthId: month.id, monthTitle: month.title, area: areaFolderOf(areaId), day: found.day, noteId, notePath: rel });
+      }
+      } catch (e) { projectWarning = `No se pudo preparar el repositorio del proyecto: ${(e as Error).message}`; }
+      if (!month) projectWarning = "Esta práctica no tiene un proyecto mensual asociado en la planificación.";
+      return { rel, created: r.created.includes(found.rel), date: found.date, projectRepo, projectWarning };
     },
 
     mentor_area_kata_mark(opts: unknown) {

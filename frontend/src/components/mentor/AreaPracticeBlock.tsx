@@ -31,7 +31,9 @@ function KataRow({ planId, area, d, mark, showDates = true }: { planId: string; 
     try {
       const r = await api.mentorAreaKataOpen(planId, area.areaId, d.date);
       await useApp.getState().openNote(r.rel);
-      if (r.created) toast("info", "Kata creado en tu vault y abierto.");
+      if (r.projectWarning) toast("error", r.projectWarning);
+      else if (r.projectRepo) toast("info", `Repositorio mensual: ${r.projectRepo}`);
+      else if (r.created) toast("info", "Kata creado en tu vault y abierto.");
     } catch (e) {
       toast("error", (e as Error).message);
     }
