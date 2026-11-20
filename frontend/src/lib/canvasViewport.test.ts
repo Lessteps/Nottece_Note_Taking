@@ -61,4 +61,18 @@ describe("canvas viewport culling", () => {
     const { edges: withFar } = visibleCanvas(bigDoc, rect, new Set(["n19-19"]));
     expect(withFar.map((e) => e.id)).toEqual(["e-far", "e-near", "e-far2"]);
   });
+
+  it("keeps an edge when zoomed in close to the line, even if both cards are off screen", () => {
+    // n0-0 is at (0, 0), n19-19 is at (3800, 3800).
+    // Viewport is zoomed in at the center (world rect x: 1800, y: 1800, w: 200, h: 200).
+    const midRect = { x: 1800, y: 1800, width: 200, height: 200 };
+    const { nodes, edges } = visibleCanvas(bigDoc, midRect);
+
+    // Neither node is inside midRect
+    expect(nodes.some((n) => n.id === "n0-0" || n.id === "n19-19")).toBe(false);
+    // But e-far connects n0-0 and n19-19 and spans right across the middle
+    expect(edges.some((e) => e.id === "e-far")).toBe(true);
+    // And e-near (between n0-0 and n0-1 at 200, 0) is far away and should be culled
+    expect(edges.some((e) => e.id === "e-near")).toBe(false);
+  });
 });

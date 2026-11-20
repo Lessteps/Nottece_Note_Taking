@@ -587,7 +587,12 @@ export const useApp = create<State>((setState, get) => {
     const exists = openTabs.find((t) => t.tabId === id);
     const file = newTab.kind === "note" || newTab.kind === "canvas";
     const placed = placeTab(get(), newTab, file && opts?.preview === true);
-    set({ ...placed, activeTabId: id, module: tabModuleId(exists ?? newTab) });
+    set({
+      ...placed,
+      activeTabId: id,
+      module: tabModuleId(exists ?? newTab),
+      ...(file ? { explorerOpen: true, explorerTab: "files" } : {}),
+    });
   },
 
   keepTab: (id) => {
@@ -632,7 +637,12 @@ export const useApp = create<State>((setState, get) => {
   setActiveTab: (id) => {
     const tab = get().openTabs.find((t) => t.tabId === id);
     if (!tab) return;
-    set({ activeTabId: id, module: tabModuleId(tab) });
+    const file = tab.kind === "note" || tab.kind === "canvas";
+    set({
+      activeTabId: id,
+      module: tabModuleId(tab),
+      ...(file ? { explorerOpen: true, explorerTab: "files" } : {}),
+    });
   },
 
   pinTab: (id) => {
@@ -664,6 +674,8 @@ export const useApp = create<State>((setState, get) => {
           ...placed,
           activeTabId: noteTabId,
           module: "notas",
+          explorerOpen: true,
+          explorerTab: "files",
           side: placed.side === path ? st.active : placed.side,
           notes: opts?.line !== undefined
             ? { ...notes, [path]: { ...notes[path]!, revealLine: opts.line } }
@@ -680,6 +692,8 @@ export const useApp = create<State>((setState, get) => {
         return {
           ...placed,
           module: "notas",
+          explorerOpen: true,
+          explorerTab: "files",
           notes: { ...placed.notes, [path]: st.notes[path] ?? fromData(data, opts?.line) },
           activeTabId: noteTabId,
         };

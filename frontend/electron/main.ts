@@ -16,6 +16,12 @@ import { installZoom } from "./zoom";
 // Allow HTML5 video and audio autoplay in embedded views
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 
+// Enforce V8 memory caps, optimize for size and limit renderer processes
+app.commandLine.appendSwitch("js-flags", "--max-old-space-size=256 --optimize_for_size");
+app.commandLine.appendSwitch("renderer-process-limit", "2");
+app.commandLine.appendSwitch("disk-cache-size", "67108864");
+app.commandLine.appendSwitch("media-cache-size", "33554432");
+
 // Configure GPU and rendering switches before app ready to maximize performance and respect settings
 try {
   if (process.platform === "linux" && !app.commandLine.hasSwitch("ozone-platform") && !app.commandLine.hasSwitch("ozone-platform-hint")) {

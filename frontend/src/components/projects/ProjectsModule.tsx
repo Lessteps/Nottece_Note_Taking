@@ -1,6 +1,5 @@
 import { ChevronLeft, ChevronRight, LayoutGrid, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useApp } from "../../store/app";
 import { useProjects } from "../../store/projects";
 import { PrimaryButton } from "../common/forms";
 import { cn } from "../ui";
@@ -9,7 +8,6 @@ import { ProjectsBoard } from "./ProjectsBoard";
 import { ProjectView } from "./ProjectView";
 
 export function ProjectsModule() {
-  const explorerOpen = useApp((s) => s.explorerOpen);
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem("nv.sidebar.projects.collapsed") === "true";
@@ -43,11 +41,10 @@ export function ProjectsModule() {
 
   return (
     <div className="flex min-w-0 flex-1">
-      {explorerOpen && (
-        <aside className={cn(
-          "flex flex-none flex-col border-r border-line bg-panel transition-all duration-200",
-          collapsed ? "w-16" : "w-[240px]"
-        )}>
+      <aside className={cn(
+        "flex flex-none flex-col border-r border-line bg-panel transition-all duration-200",
+        collapsed ? "w-16" : "w-[240px]"
+      )}>
           <div className="flex h-10 flex-none items-center border-b border-line px-3">
             {!collapsed && (
               <span className="font-mono text-[10.5px] font-semibold uppercase tracking-wider text-faint truncate">
@@ -101,7 +98,6 @@ export function ProjectsModule() {
             {!collapsed && loaded && !cards.length && <p className="px-2 pt-2 text-[11.5px] text-faint">Sin proyectos todavía</p>}
           </nav>
         </aside>
-      )}
       <main className="flex min-w-0 flex-1 flex-col bg-surface">
         {!loaded ? <div className="grid flex-1 place-items-center text-[13px] text-faint">Cargando proyectos…</div>
           : openId ? <ProjectView /> : <ProjectsBoard />}

@@ -22,6 +22,8 @@ export function useModuleVisible(): boolean {
   return useContext(ModuleVisible);
 }
 
+const MAX_RETAINED_MODULES = 2;
+
 export function ModuleHost({
   module,
   render,
@@ -33,7 +35,13 @@ export function ModuleHost({
   const [mounted, setMounted] = useState<ModuleId[]>([module]);
 
   useEffect(() => {
-    setMounted((current) => (current.includes(module) ? current : [...current, module]));
+    setMounted((current) => {
+      const withoutActive = current.filter((id) => id !== module);
+      const next = [...withoutActive, module];
+      // El módulo "web" aloja un <webview> nativo de Chromium: nunca se retiene en segundo plano
+      const filtered = next.filter((id) => id === module || id !== "web");
+      return filtered.slice(-MAX_RETAINED_MODULES);
+    });
   }, [module]);
 
   return (

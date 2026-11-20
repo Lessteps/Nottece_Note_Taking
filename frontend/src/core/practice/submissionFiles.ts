@@ -3,6 +3,19 @@ import * as path from "node:path";
 import type { ExerciseNote } from "./exerciseNote.js";
 import { MODES } from "./modes.js";
 
+/** Deduce la extensión de código adecuada (.py, .ts, .js, .sql, etc.) para un ejercicio o kata. */
+export function exerciseCodeExtension(ex: ExerciseNote, attemptLang?: string): string {
+  const lang = `${attemptLang ?? ""} ${(ex as any).run_language ?? ex.frontmatter?.run_language ?? ""} ${ex.code_lang ?? ""} ${ex.frontmatter?.language ?? ""} ${ex.discipline ?? ""}`.toLowerCase();
+  let extension = /\b(python|py)\b/.test(lang) ? "py" : /\b(typescript|ts)\b/.test(lang) ? "ts" : /\b(javascript|js)\b/.test(lang) ? "js" : /\bjava\b/.test(lang) ? "java" : /\b(sql|postgresql)\b/.test(lang) ? "sql" : "";
+  if (!extension && (ex.discipline === "programming_practice" || ex.mode === "pp_kata")) {
+    const area = String(ex.frontmatter?.area ?? "").toLowerCase();
+    if (area === "frontend" || area === "desktop" || area === "mobile") return "ts";
+    if (area === "databases") return "sql";
+    return "py";
+  }
+  return extension;
+}
+
 /** Guarda una entrega individual sin reemplazar archivos escritos por el usuario. */
 export function writePracticeSubmission(root: string, ex: ExerciseNote, notePath: string, attempt: Record<string, any>, index: number): string | null {
   if (ex.subject !== "programming") return null;
@@ -24,9 +37,9 @@ export function writePracticeSubmission(root: string, ex: ExerciseNote, notePath
     folder = path.join(base, `${dirname}-${suffix}`);
   }
   const answer = String(attempt.answer ?? "");
-  const lang = `${ex.code_lang} ${ex.frontmatter.language ?? ""} ${ex.discipline}`.toLowerCase();
-  const extension = /\b(python|py)\b/.test(lang) ? "py" : /\b(typescript|ts)\b/.test(lang) ? "ts" : /\b(javascript|js)\b/.test(lang) ? "js" : /\bjava\b/.test(lang) ? "java" : /\b(sql|postgresql)\b/.test(lang) ? "sql" : "";
-  const code = MODES[ex.mode]?.answer_kind === "code" && extension;
+  const extension = exerciseCodeExtension(ex, attempt.language);
+  const isCodeMode = MODES[ex.mode]?.answer_kind === "code" || ex.mode === "pp_kata";
+  const code = isCodeMode && extension;
   const fenced = /^\s*```(?:[\w+.-]+)?\s*\n([\s\S]*?)\n```\s*$/.exec(answer);
   const solution = fenced ? fenced[1]! : answer;
   const readme = [`# ${ex.title}`, "", `Ejercicio: ${notePath}`, `Intento: ${index}`, `Fecha: ${String(attempt.at ?? "")}`, `Resultado: ${String(attempt.score ?? "—")}/100 · ${String(attempt.verdict ?? "")}`, "", "## Enunciado", "", ex.statement, "", "## Entrega", "", code ? `Código entregado en \`solucion.${extension}\`.` : answer, "", "## Retroalimentación", "", String(attempt.feedback ?? ""), ""].join("\n");
@@ -34,7 +47,19 @@ export function writePracticeSubmission(root: string, ex: ExerciseNote, notePath
   fs.mkdirSync(folder);
   try {
     fs.writeFileSync(path.join(folder, "README.md"), readme, { encoding: "utf8", flag: "wx" });
-    if (code) fs.writeFileSync(path.join(folder, `solucion.${extension}`), solution.endsWith("\n") ? solution : `${solution}\n`, { encoding: "utf8", flag: "wx" });
+    if (code) {
+      const codeContent = solution.endsWith("\n") ? solution : `${solution}\n`;
+      fs.writeFileSync(path.join(folder, `solucion.${extension}`), codeContent, { encoding: "utf8", flag: "wx" });
+      // En katas o proyectos con workspace previo, se mantiene sincronizado el archivo raíz de trabajo.
+      // En ejercicios estándar, la solución vive exclusivamente en su intento (intento-XXX/solucion.<ext>)
+      // para evitar archivos duplicados y mantener la estructura limpia.
+      const rootSolutionPath = path.join(base, `solucion.${extension}`);
+      if (ex.mode === "pp_kata" || fs.existsSync(rootSolutionPath)) {
+        try {
+          fs.writeFileSync(rootSolutionPath, codeContent, "utf8");
+        } catch { /* ignorar */ }
+      }
+    }
     fs.writeFileSync(path.join(folder, "entrega.json"), JSON.stringify({ note_id: ex.note_id, attempt_index: index, note_path: notePath }, null, 2) + "\n", { encoding: "utf8", flag: "wx" });
   } catch (error) {
     // La carpeta acaba de crearse y solo contiene archivos de esta operación.

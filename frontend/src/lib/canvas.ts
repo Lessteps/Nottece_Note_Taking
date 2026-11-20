@@ -138,6 +138,160 @@ export function anchorExtras(fromT: number, toT: number): { fromT?: number; toT?
   return Object.keys(out).length ? out : undefined;
 }
 
+export interface ResolvedEdgeAnchors {
+  fromT: number;
+  toT: number;
+}
+
+export const DEFAULT_MIN_SEPARATION = 24;
+
+/**
+ * Resolves attachment positions (t values) for edges.
+ * When multiple edges connect to the same side of a node, they are distributed
+ * with an obligatory minimum separation margin so they do not overlap, and ordered
+ * geometrically to prevent crossing lines.
+ */
+export function resolveEdgeAnchors(
+  nodes: readonly CNode[] | ReadonlyMap<string, CNode>,
+  edges: readonly CEdge[],
+  minSeparation = DEFAULT_MIN_SEPARATION,
+): Map<string, ResolvedEdgeAnchors> {
+  const nodeMap: ReadonlyMap<string, CNode> = (
+    Array.isArray(nodes) ? new Map(nodes.map((n) => [n.id, n])) : nodes
+  ) as ReadonlyMap<string, CNode>;
+  const result = new Map<string, ResolvedEdgeAnchors>();
+
+  for (const e of edges) {
+    result.set(e.id, { fromT: edgeT(e, "from"), toT: edgeT(e, "to") });
+  }
+
+  interface EndpointRef {
+    edgeId: string;
+    end: "from" | "to";
+    oppositeNodeId: string;
+    hasCustomT: boolean;
+    rawT: number;
+  }
+
+  const groups = new Map<string, { node: CNode; side: Side; endpoints: EndpointRef[] }>();
+
+  for (const e of edges) {
+    const fromNode = nodeMap.get(e.fromNode);
+    if (fromNode) {
+      const key = `${e.fromNode}:${e.fromSide}`;
+      let group = groups.get(key);
+      if (!group) {
+        group = { node: fromNode, side: e.fromSide, endpoints: [] };
+        groups.set(key, group);
+      }
+      const rawT = edgeT(e, "from");
+      const hasCustomT = Math.abs(rawT - 0.5) > 0.001;
+      group.endpoints.push({ edgeId: e.id, end: "from", oppositeNodeId: e.toNode, hasCustomT, rawT });
+    }
+
+    const toNode = nodeMap.get(e.toNode);
+    if (toNode) {
+      const key = `${e.toNode}:${e.toSide}`;
+      let group = groups.get(key);
+      if (!group) {
+        group = { node: toNode, side: e.toSide, endpoints: [] };
+        groups.set(key, group);
+      }
+      const rawT = edgeT(e, "to");
+      const hasCustomT = Math.abs(rawT - 0.5) > 0.001;
+      group.endpoints.push({ edgeId: e.id, end: "to", oppositeNodeId: e.fromNode, hasCustomT, rawT });
+    }
+  }
+
+  for (const { node, side, endpoints } of groups.values()) {
+    const K = endpoints.length;
+    if (K <= 1) continue;
+
+    const isHorizontal = side === "top" || side === "bottom";
+    const L = isHorizontal ? node.width : node.height;
+    if (L <= 0) continue;
+
+    const cornerPad = Math.min(14, Math.max(6, L * 0.1));
+    const usable = Math.max(0, L - 2 * cornerPad);
+    if (usable <= 0) continue;
+
+    const getOppCoord = (ep: EndpointRef) => {
+      const opp = nodeMap.get(ep.oppositeNodeId);
+      if (!opp) return 0;
+      return isHorizontal ? opp.x + opp.width / 2 : opp.y + opp.height / 2;
+    };
+
+    const hasAnyCustom = endpoints.some((ep) => ep.hasCustomT);
+
+    if (!hasAnyCustom) {
+      endpoints.sort((a, b) => {
+        const diff = getOppCoord(a) - getOppCoord(b);
+        if (Math.abs(diff) > 1e-4) return diff;
+        return a.edgeId.localeCompare(b.edgeId) || a.end.localeCompare(b.end);
+      });
+
+      const maxPossibleSep = usable / Math.max(1, K - 1);
+      const effectiveMinSep = Math.min(minSeparation, maxPossibleSep);
+      let spacing = Math.min(48, Math.max(effectiveMinSep, usable / (K + 1)));
+      if ((K - 1) * spacing > usable) {
+        spacing = maxPossibleSep;
+      }
+
+      const totalSpan = (K - 1) * spacing;
+      const startPos = (L - totalSpan) / 2;
+
+      for (let i = 0; i < K; i++) {
+        const pos = startPos + i * spacing;
+        const t = Math.max(0.01, Math.min(0.99, pos / L));
+        const ep = endpoints[i]!;
+        const res = result.get(ep.edgeId)!;
+        if (ep.end === "from") res.fromT = t;
+        else res.toT = t;
+      }
+    } else {
+      endpoints.sort((a, b) => {
+        const posA = a.hasCustomT ? a.rawT * L : L / 2;
+        const posB = b.hasCustomT ? b.rawT * L : L / 2;
+        if (Math.abs(posA - posB) > 1e-4) return posA - posB;
+        const diff = getOppCoord(a) - getOppCoord(b);
+        if (Math.abs(diff) > 1e-4) return diff;
+        return a.edgeId.localeCompare(b.edgeId) || a.end.localeCompare(b.end);
+      });
+
+      const maxPossibleSep = usable / Math.max(1, K - 1);
+      const sep = Math.min(minSeparation, maxPossibleSep);
+      const pos = endpoints.map((ep) => (ep.hasCustomT ? ep.rawT * L : L / 2));
+
+      pos[0] = Math.max(cornerPad, pos[0]!);
+      for (let i = 1; i < K; i++) {
+        if (pos[i]! < pos[i - 1]! + sep) {
+          pos[i] = pos[i - 1]! + sep;
+        }
+      }
+
+      if (pos[K - 1]! > L - cornerPad) {
+        pos[K - 1] = L - cornerPad;
+      }
+      for (let i = K - 2; i >= 0; i--) {
+        if (pos[i]! > pos[i + 1]! - sep) {
+          pos[i] = pos[i + 1]! - sep;
+        }
+      }
+
+      for (let i = 0; i < K; i++) {
+        const clampedPos = Math.max(cornerPad, Math.min(L - cornerPad, pos[i]!));
+        const t = Math.max(0.01, Math.min(0.99, clampedPos / L));
+        const ep = endpoints[i]!;
+        const res = result.get(ep.edgeId)!;
+        if (ep.end === "from") res.fromT = t;
+        else res.toT = t;
+      }
+    }
+  }
+
+  return result;
+}
+
 export interface BorderHit {
   side: Side;
   /** Position along that side, 0..1. */

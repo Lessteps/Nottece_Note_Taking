@@ -45,6 +45,17 @@ export function visibleCanvas(
 ): VisibleCanvas {
   const nodes = doc.nodes.filter((n) => selected.has(n.id) || inViewport(n, rect));
   const ids = new Set(nodes.map((n) => n.id));
-  const edges = doc.edges.filter((e) => ids.has(e.fromNode) || ids.has(e.toNode));
+  const byId = new Map(doc.nodes.map((n) => [n.id, n]));
+  const edges = doc.edges.filter((e) => {
+    if (ids.has(e.fromNode) || ids.has(e.toNode)) return true;
+    const a = byId.get(e.fromNode);
+    const b = byId.get(e.toNode);
+    if (!a || !b) return false;
+    const minX = Math.min(a.x, b.x) - 100;
+    const minY = Math.min(a.y, b.y) - 100;
+    const maxX = Math.max(a.x + a.width, b.x + b.width) + 100;
+    const maxY = Math.max(a.y + a.height, b.y + b.height) + 100;
+    return intersects(rect, { x: minX, y: minY, width: maxX - minX, height: maxY - minY });
+  });
   return { nodes, ids, edges };
 }

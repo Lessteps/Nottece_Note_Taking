@@ -19,6 +19,7 @@ import { ApiError } from "../../core/errors.js";
 import { parseFrontmatter } from "../../core/frontmatter.js";
 import { PracticeAttemptStore } from "../../core/practice/attempts.js";
 import { writePracticeSubmission } from "../../core/practice/submissionFiles.js";
+import { ensureKataWorkspace } from "../../core/practice/kataWorkspace.js";
 import { disciplineFor, skillOf } from "../../core/practice/disciplineCatalog.js";
 import { DRILL_KINDS, type DrillItem, check as checkDrill, generate as generateDrill, summarize as summarizeDrill } from "../../core/practice/drills.js";
 import { applyResult, recentErrors } from "../../core/practice/errorLog.js";
@@ -277,6 +278,9 @@ export function practiceApi(app: AppState) {
     },
     practice_load(rel: string) {
       const [p, ex] = getExercise(app, rel);
+      if (ex.mode === "pp_kata" || ex.discipline === "programming_practice" || rel.includes("/katas/")) {
+        try { ensureKataWorkspace(app.root, rel, ex); } catch { /* ok */ }
+      }
       const mode = MODES[ex.mode] || modeFor(ex.frontmatter);
       const disc = disciplineFor(ex.frontmatter);
       const skill = disc && ex.skill ? skillOf(disc, ex.skill) : null;

@@ -19,7 +19,7 @@ import { api } from "../../lib/bridge";
 import { copyText } from "../../lib/clipboard";
 import type { CodeRun } from "../../lib/types";
 import { cn } from "../ui";
-import { highlightCode } from "../../lib/markdown";
+import { highlightCode, normalizeLanguage } from "../../lib/markdown";
 
 interface PracticeCodeEditorProps {
   value: string;
@@ -53,11 +53,40 @@ export function PracticeCodeEditor({
   const [copiedStarter, setCopiedStarter] = useState(false);
   const [stdin, setStdin] = useState("");
   const [showStdin, setShowStdin] = useState(false);
+  const [activeLine, setActiveLine] = useState(0);
+  const [caretCol, setCaretCol] = useState(0);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const gutterRef = useRef<HTMLDivElement>(null);
 
+  const normLang = useMemo(() => normalizeLanguage(language), [language]);
+  const displayLangName = useMemo(() => {
+    const map: Record<string, string> = {
+      python: "Python",
+      typescript: "TypeScript",
+      javascript: "JavaScript",
+      java: "Java",
+      cpp: "C++",
+      c: "C",
+      rust: "Rust",
+      sql: "SQL",
+      go: "Go",
+      bash: "Bash",
+    };
+    return map[normLang] || (normLang ? normLang.charAt(0).toUpperCase() + normLang.slice(1) : "Python");
+  }, [normLang]);
+
+  const updateCaret = (el: HTMLTextAreaElement) => {
+    const textBefore = el.value.slice(0, el.selectionStart);
+    const lineIndex = textBefore.split("\n").length - 1;
+    const lastNewline = textBefore.lastIndexOf("\n");
+    const colIndex = lastNewline === -1 ? textBefore.length : textBefore.length - lastNewline - 1;
+    setActiveLine(lineIndex);
+    setCaretCol(colIndex);
+  };
+
   const keepCaretVisible = useCallback((el: HTMLTextAreaElement) => {
+    updateCaret(el);
     const line = el.value.slice(0, el.selectionStart).split("\n").length - 1;
     const top = PAD_TOP + line * LINE_HEIGHT;
     const bottom = top + LINE_HEIGHT;
@@ -79,6 +108,7 @@ export function PracticeCodeEditor({
 
   const handleChange = (el: HTMLTextAreaElement, nextValue: string) => {
     onChange(nextValue);
+    updateCaret(el);
     requestAnimationFrame(() => keepCaretVisible(el));
   };
 
@@ -142,7 +172,7 @@ export function PracticeCodeEditor({
     setIsRunning(true);
     setShowConsole(true);
     try {
-      const res = await api.codeRun(language || "python", codeToRun, stdin);
+      const res = await api.codeRun(normLang, codeToRun, stdin);
       setRunOutcome(res);
     } catch (e: any) {
       setRunOutcome({
@@ -153,12 +183,12 @@ export function PracticeCodeEditor({
         ms: 0,
         timed_out: false,
         truncated: false,
-        runtime: language,
+        runtime: normLang,
       });
     } finally {
       setIsRunning(false);
     }
-  }, [isRunning, value, language, stdin]);
+  }, [isRunning, value, normLang, stdin]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // Ctrl+Enter or Cmd+Enter: Execute code
@@ -173,6 +203,102 @@ export function PracticeCodeEditor({
     const el = e.currentTarget;
     const start = el.selectionStart;
     const end = el.selectionEnd;
+
+    // Smart Backspace
+    if (e.key === "Backspace" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (start === end && start > 0) {
+        const prevChar = value[start - 1];
+        const nextChar = value[start];
+        const pairs: Record<string, string> = {
+          "(": ")",
+          "[": "]",
+          "{": "}",
+          '"': '"',
+          "'": "'",
+          "`": "`",
+        };
+
+        // 1. Delete matching auto-closed pair
+        if (prevChar && pairs[prevChar] && pairs[prevChar] === nextChar) {
+          e.preventDefault();
+          const nextVal = value.slice(0, start - 1) + value.slice(start + 1);
+          onChange(nextVal);
+          requestAnimationFrame(() => {
+            el.selectionStart = el.selectionEnd = start - 1;
+            keepCaretVisible(el);
+          });
+          return;
+        }
+
+        // 2. Soft tab unindent: if preceding characters on the line are spaces only
+        const lineStart = value.lastIndexOf("\n", start - 1) + 1;
+        const lineBeforeCaret = value.slice(lineStart, start);
+        if (lineBeforeCaret.length > 1 && /^ +$/.test(lineBeforeCaret)) {
+          e.preventDefault();
+          const tabSize = 4;
+          const remainder = lineBeforeCaret.length % tabSize;
+          const deleteCount = remainder === 0 ? tabSize : remainder;
+          const nextVal = value.slice(0, start - deleteCount) + value.slice(start);
+          onChange(nextVal);
+          requestAnimationFrame(() => {
+            el.selectionStart = el.selectionEnd = start - deleteCount;
+            keepCaretVisible(el);
+          });
+          return;
+        }
+      }
+    }
+
+    // Auto-closing brackets and quotes
+    const autoPairs: Record<string, string> = {
+      "(": ")",
+      "[": "]",
+      "{": "}",
+      '"': '"',
+      "'": "'",
+      "`": "`",
+    };
+    if (autoPairs[e.key] && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const closeChar = autoPairs[e.key]!;
+      if (start === end) {
+        const prevChar = value[start - 1];
+        const nextChar = value[start];
+        const isQuote = e.key === '"' || e.key === "'" || e.key === "`";
+        // Avoid auto-closing quotes inside words (e.g. apostrophes in English: don't)
+        const inWord = isQuote && ((prevChar && /[a-zA-Z0-9_]/.test(prevChar)) || (nextChar && /[a-zA-Z0-9_]/.test(nextChar)));
+        if (!inWord) {
+          e.preventDefault();
+          const nextVal = value.slice(0, start) + e.key + closeChar + value.slice(start);
+          onChange(nextVal);
+          requestAnimationFrame(() => {
+            el.selectionStart = el.selectionEnd = start + 1;
+            keepCaretVisible(el);
+          });
+          return;
+        }
+      } else {
+        // Wrap selection in pair
+        e.preventDefault();
+        const selected = value.slice(start, end);
+        const nextVal = value.slice(0, start) + e.key + selected + closeChar + value.slice(end);
+        onChange(nextVal);
+        requestAnimationFrame(() => {
+          el.selectionStart = start + 1;
+          el.selectionEnd = end + 1;
+          keepCaretVisible(el);
+        });
+        return;
+      }
+    }
+
+    // Overtyping closing brackets or quotes
+    const closingChars = new Set([")", "]", "}", '"', "'", "`"]);
+    if (closingChars.has(e.key) && start === end && value[start] === e.key && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      el.selectionStart = el.selectionEnd = start + 1;
+      requestAnimationFrame(() => keepCaretVisible(el));
+      return;
+    }
 
     // Tab key: indent / unindent
     if (e.key === "Tab") {
@@ -226,16 +352,35 @@ export function PracticeCodeEditor({
     }
 
     // Auto-indent on Enter
-    if (e.key === "Enter") {
+    if (e.key === "Enter" && !e.ctrlKey && !e.metaKey) {
       e.preventDefault();
       const lineStart = value.lastIndexOf("\n", start - 1) + 1;
       const currentLine = value.slice(lineStart, start);
       const match = currentLine.match(/^(\s+)/);
       let indent = match?.[1] ?? "";
 
-      // Add extra indent if line ends with ':' (Python) or '{' (JS/TS/C)
+      const prevChar = value[start - 1];
+      const nextChar = value[start];
+
+      // Enter between brackets: {|} -> creates indented newline and pushes closing bracket down
+      if (
+        (prevChar === "{" && nextChar === "}") ||
+        (prevChar === "[" && nextChar === "]") ||
+        (prevChar === "(" && nextChar === ")")
+      ) {
+        const nextVal =
+          value.slice(0, start) + "\n" + indent + "    \n" + indent + value.slice(end);
+        onChange(nextVal);
+        requestAnimationFrame(() => {
+          el.selectionStart = el.selectionEnd = start + 1 + indent.length + 4;
+          keepCaretVisible(el);
+        });
+        return;
+      }
+
+      // Add extra indent if line ends with ':' (Python) or '{' (JS/TS/Java/C) or '('
       const trimmedBefore = currentLine.trimEnd();
-      if (trimmedBefore.endsWith(":") || trimmedBefore.endsWith("{")) {
+      if (trimmedBefore.endsWith(":") || trimmedBefore.endsWith("{") || trimmedBefore.endsWith("(")) {
         indent += "    ";
       }
 
@@ -258,7 +403,7 @@ export function PracticeCodeEditor({
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1.5 rounded-md border border-[#303036] bg-[#222226] px-2 py-0.5 text-[11px] font-mono font-medium text-accent-text">
             <FileCode size={12} />
-            <span>{language ? language.charAt(0).toUpperCase() + language.slice(1) : "Python"}</span>
+            <span>{displayLangName}</span>
           </div>
           {mode && (
             <span className="hidden font-mono text-[10.5px] uppercase tracking-wider text-faint sm:inline">
@@ -392,11 +537,18 @@ export function PracticeCodeEditor({
         <div
           ref={gutterRef}
           aria-hidden="true"
-          className="w-11 flex-none select-none overflow-hidden border-r border-[#252528] bg-[#17171a] text-right font-mono text-[11.5px] text-[#55555c]"
+          className="w-12 flex-none select-none overflow-hidden border-r border-[#252528] bg-[#17171a] text-right font-mono text-[11.5px] text-[#55555c]"
           style={{ paddingTop: PAD_TOP, paddingBottom: PAD_BOTTOM, lineHeight: `${LINE_HEIGHT}px` }}
         >
           {Array.from({ length: lines }, (_, i) => (
-            <div key={i + 1} style={{ height: LINE_HEIGHT }} className="pr-2">
+            <div
+              key={i + 1}
+              style={{ height: LINE_HEIGHT }}
+              className={cn(
+                "pr-2.5 transition-colors font-mono",
+                i === activeLine ? "font-bold text-accent-text bg-white/[0.04]" : "text-[#55555c]"
+              )}
+            >
               {i + 1}
             </div>
           ))}
@@ -404,6 +556,16 @@ export function PracticeCodeEditor({
 
         {/* Text Area */}
         <div className="relative min-w-0 flex-1">
+          {/* Active line highlight bar */}
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute left-0 right-0 transition-all duration-75"
+            style={{
+              top: PAD_TOP + activeLine * LINE_HEIGHT,
+              height: LINE_HEIGHT,
+              backgroundColor: "rgba(255, 255, 255, 0.035)",
+            }}
+          />
           <pre aria-hidden="true" className="pointer-events-none absolute inset-0 m-0 overflow-hidden px-3 font-mono text-[13px] leading-[22px] text-[#e8e8ed]" style={{ paddingTop: PAD_TOP, paddingBottom: PAD_BOTTOM, whiteSpace: "pre", tabSize: 4 }}>
             <div aria-hidden="true" className="pointer-events-none absolute inset-x-3 overflow-hidden" style={{ top: PAD_TOP, bottom: PAD_BOTTOM }}>
               {indentGuides.map(({ lineIndex, level }) => (
@@ -415,12 +577,14 @@ export function PracticeCodeEditor({
                     top: lineIndex * LINE_HEIGHT,
                     width: 1,
                     height: LINE_HEIGHT,
-                    backgroundColor: "rgba(145, 145, 155, 0.34)",
+                    backgroundColor: level === Math.floor(caretCol / 4) - 1 && lineIndex === activeLine
+                      ? "rgba(139, 124, 246, 0.45)"
+                      : "rgba(145, 145, 155, 0.22)",
                   }}
                 />
               ))}
             </div>
-            <code className="nv-code-highlight" dangerouslySetInnerHTML={{ __html: highlightCode(value || placeholder, language) + (value.endsWith("\n") ? " " : "") }} />
+            <code className="nv-code-highlight" dangerouslySetInnerHTML={{ __html: highlightCode(value || placeholder, normLang) + (value.endsWith("\n") ? " " : "") }} />
           </pre>
           <textarea
             ref={textareaRef}
@@ -428,6 +592,9 @@ export function PracticeCodeEditor({
             value={value}
             readOnly={disabled}
             onChange={(e) => handleChange(e.currentTarget, e.currentTarget.value)}
+            onKeyUp={(e) => updateCaret(e.currentTarget)}
+            onClick={(e) => updateCaret(e.currentTarget)}
+            onSelect={(e) => updateCaret(e.currentTarget)}
             onScroll={(e) => {
               handleScroll(e);
               const pre = e.currentTarget.previousElementSibling as HTMLElement | null;
@@ -436,9 +603,22 @@ export function PracticeCodeEditor({
             onKeyDown={handleKeyDown}
             placeholder={placeholder}
             spellCheck={false}
-            className="relative h-full w-full resize-y bg-transparent px-3 font-mono text-[13px] leading-[22px] text-transparent caret-[#e8e8ed] outline-none placeholder:text-[#55555c] selection:bg-accent/30"
+            className="relative h-full w-full resize-y bg-transparent px-3 font-mono text-[13px] leading-[22px] text-transparent caret-[#ffffff] outline-none placeholder:text-[#55555c] selection:bg-accent/30"
             style={{ paddingTop: PAD_TOP, paddingBottom: PAD_BOTTOM, whiteSpace: "pre", tabSize: 4, minHeight: "260px" }}
           />
+        </div>
+      </div>
+
+      {/* Editor Status Bar */}
+      <div className="flex items-center justify-between border-t border-[#252528] bg-[#141418] px-3.5 py-1 text-[11px] font-mono text-faint">
+        <div className="flex items-center gap-3">
+          <span>Ln {activeLine + 1}, Col {caretCol + 1}</span>
+          <span className="hidden sm:inline">·</span>
+          <span className="hidden sm:inline">Espacios: 4</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="hidden sm:inline">UTF-8</span>
+          <span className="font-medium text-dim">{displayLangName}</span>
         </div>
       </div>
 

@@ -9,7 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { api } from "../../lib/bridge";
 import {
   anchorExtras, borderHit, bounds, cloneNodes, colorOf, contains, drawingNode, edgePath, edgeT, GRID, gridBackgroundOffset, intersects,
-  nearestSide, newId, portPoint, PRESET_COLORS, pruneEdges, resizeHandleAt, resizeRect, RESIZE_CURSOR, SHAPES, snappedDelta, snapRect,
+  nearestSide, newId, portPoint, PRESET_COLORS, pruneEdges, resizeHandleAt, resizeRect, RESIZE_CURSOR, resolveEdgeAnchors, SHAPES, snappedDelta, snapRect,
   snapTo, type BorderHit, type CEdge, type CNode, type CanvasDoc, type Rect, type ResizeHandle, type Side,
 } from "../../lib/canvas";
 import { readClipboard } from "../../lib/clipboard";
@@ -728,6 +728,11 @@ export function CanvasView() {
     // `viewport` is a fresh object per render: compare its numbers instead.
     [doc, viewport.x, viewport.y, viewport.width, viewport.height, sel],
   );
+  // Edge anchors resolved with guaranteed minimum separation margin along shared sides
+  const resolvedAnchors = useMemo(
+    () => resolveEdgeAnchors(doc.nodes, doc.edges),
+    [doc.nodes, doc.edges],
+  );
   // A group that contains another is its parent: it is drawn first, so the inner one stays on top and can be reached.
   const groups = useMemo(() => {
     const all = doc.nodes.filter((n) => n.type === "group");
@@ -810,7 +815,18 @@ export function CanvasView() {
             {visible.edges.map((e) => {
               const a = byId.get(e.fromNode);
               const b = byId.get(e.toNode);
-              return a && b ? <EdgeView key={e.id} edge={e} a={a} b={b} selected={selEdge === e.id} /> : null;
+              const anchors = resolvedAnchors.get(e.id);
+              return a && b ? (
+                <EdgeView
+                  key={e.id}
+                  edge={e}
+                  a={a}
+                  b={b}
+                  selected={selEdge === e.id}
+                  fromT={anchors?.fromT}
+                  toT={anchors?.toT}
+                />
+              ) : null;
             })}
             {drag?.kind === "connect" && byId.get(drag.from) && (
               <line x1={portOf(byId.get(drag.from)!, drag.side, drag.t)[0]} y1={portOf(byId.get(drag.from)!, drag.side, drag.t)[1]}
@@ -935,18 +951,62 @@ function arrowHead(n: Rect, side: Side, size: number, t = 0.5): string {
   return `${x},${y} ${bx + px},${by + py} ${bx - px},${by - py}`;
 }
 
-function EdgeView({ edge, a, b, selected }: { edge: CEdge; a: CNode; b: CNode; selected: boolean }) {
-  const fromT = edgeT(edge, "from");
-  const toT = edgeT(edge, "to");
+function nodeSummary(n: CNode): string {
+  if (n.type === "file" && n.file) return n.file.split("/").pop() ?? n.file;
+  if (n.type === "text" && n.text) {
+    const firstLine = n.text.trim().split("\n")[0] ?? "";
+    return firstLine.slice(0, 30) || "Nota";
+  }
+  if (n.type === "link" && n.url) return n.url;
+  if (n.type === "group" && n.label) return n.label;
+  return n.type ?? "Nota";
+}
+
+function EdgeView({
+  edge,
+  a,
+  b,
+  selected,
+  fromT: resolvedFromT,
+  toT: resolvedToT,
+}: {
+  edge: CEdge;
+  a: CNode;
+  b: CNode;
+  selected: boolean;
+  fromT?: number;
+  toT?: number;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const fromT = resolvedFromT ?? edgeT(edge, "from");
+  const toT = resolvedToT ?? edgeT(edge, "to");
   const { d, mid } = edgePath(a, edge.fromSide, b, edge.toSide, fromT, toT);
-  const col = selected ? "var(--nv-accent)" : colorOf(edge.color, "var(--nv-dim)");
+  const active = selected || hovered;
+  const col = active ? "var(--nv-accent)" : colorOf(edge.color, "var(--nv-dim)");
   const dash = edge.nv?.style === "dashed" ? "8 6" : edge.nv?.style === "dotted" ? "2 5" : undefined;
   return (
-    <g>
-      <path data-edge-id={edge.id} d={d} fill="none" stroke="transparent" strokeWidth={14} className="pointer-events-auto cursor-pointer" />
-      <path d={d} fill="none" stroke={col} strokeWidth={selected ? 3 : 2} strokeDasharray={dash} />
-      {(edge.toEnd ?? "arrow") === "arrow" && <polygon points={arrowHead(b, edge.toSide, 12, toT)} fill={col} />}
-      {edge.fromEnd === "arrow" && <polygon points={arrowHead(a, edge.fromSide, 12, fromT)} fill={col} />}
+    <g
+      className="group cursor-pointer"
+      onPointerEnter={() => setHovered(true)}
+      onPointerLeave={() => setHovered(false)}
+    >
+      <path
+        data-edge-id={edge.id}
+        d={d}
+        fill="none"
+        stroke="transparent"
+        strokeWidth={14}
+        className="pointer-events-auto cursor-pointer"
+      >
+        <title>{`${nodeSummary(a)} → ${nodeSummary(b)}`}</title>
+      </path>
+      <path d={d} fill="none" stroke={col} strokeWidth={active ? 3 : 2} strokeDasharray={dash} className="transition-colors" />
+      {(edge.toEnd ?? "arrow") === "arrow" && (
+        <polygon points={arrowHead(b, edge.toSide, 12, toT)} fill={col} className="transition-colors" />
+      )}
+      {edge.fromEnd === "arrow" && (
+        <polygon points={arrowHead(a, edge.fromSide, 12, fromT)} fill={col} className="transition-colors" />
+      )}
       {edge.label && (
         <foreignObject x={mid[0] - 90} y={mid[1] - 14} width={180} height={28} className="overflow-visible">
           <div data-edge-id={edge.id} title="Doble clic para editar" className="pointer-events-auto mx-auto w-fit max-w-[180px] cursor-pointer truncate rounded-md border border-line bg-card px-2 py-0.5 text-center text-[12px] text-text">

@@ -19,6 +19,8 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "preview": "vite preview",
+    "start": "electron --no-sandbox .",
+    "electron:start": "electron --no-sandbox .",
     "electron:dev": "vite",
     "electron:build": "npm run typecheck && vite build && electron-builder"
   },

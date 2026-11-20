@@ -141,15 +141,15 @@ function keepEntry(entry: TreeEntry) {
   useApp.getState().keepTab(`${entry.kind === "canvas" ? "canvas" : "note"}:${entry.path}`);
 }
 
-function EntryIcon({ entry, open }: { entry: TreeEntry; open: boolean }) {
+function EntryIcon({ entry, open, isActive }: { entry: TreeEntry; open: boolean; isActive?: boolean }) {
   const cls = "h-4 w-4 flex-none";
   if (entry.type === "folder") {
     return open ? <FolderOpen className={cn(cls, "text-dim")} strokeWidth={1.7} />
       : <Folder className={cn(cls, "text-dim")} strokeWidth={1.7} />;
   }
-  if (entry.kind === "code") return <FileCode2 className={cn(cls, "text-mint")} strokeWidth={1.7} />;
-  if (entry.kind === "canvas") return <LayoutDashboard className={cn(cls, "text-warn")} strokeWidth={1.7} />;
-  return <FileText className={cn(cls, "text-accent-text")} strokeWidth={1.7} />;
+  if (entry.kind === "code") return <FileCode2 className={cn(cls, isActive ? "text-accent" : "text-mint")} strokeWidth={1.7} />;
+  if (entry.kind === "canvas") return <LayoutDashboard className={cn(cls, isActive ? "text-accent" : "text-warn")} strokeWidth={1.7} />;
+  return <FileText className={cn(cls, isActive ? "text-accent" : "text-accent-text")} strokeWidth={1.7} />;
 }
 
 /**
@@ -225,14 +225,20 @@ export const TreeRow = memo(function TreeRow({
       onAuxClick={(e) => e.button === 1 && !isFolder && openEntry(entry, true)}
       onContextMenu={(e) => onMenu(entry, e)}
       className={cn(
-        "group flex h-[30px] cursor-pointer items-center gap-1.5 rounded-md pr-2 text-[13px] [contain:layout_style]",
-        isActive ? "bg-accent-soft text-text" : "text-dim hover:bg-hover hover:text-text",
+        "group relative flex h-[30px] cursor-pointer items-center gap-1.5 rounded-md pr-2 text-[13px] [contain:layout_style] transition-colors",
+        isActive ? "bg-accent-soft bg-accent/20 text-text font-medium ring-1 ring-accent/60 shadow-xs" : "text-dim hover:bg-hover hover:text-text",
         isDrop && "outline outline-1 outline-accent",
         isFolder && isRevealed && "ring-1 ring-accent bg-accent-soft",
         isFolder && routeInfo?.route === "skipped" && "opacity-60",
       )}
       style={{ paddingLeft: 6 + depth * 14 }}
     >
+      {isActive && !isFolder && (
+        <span
+          className="absolute left-0 top-1 bottom-1 w-[3px] rounded-r bg-accent"
+          aria-hidden="true"
+        />
+      )}
       <button
         type="button"
         title={open ? "Contraer" : "Expandir"}
@@ -249,8 +255,8 @@ export const TreeRow = memo(function TreeRow({
       >
         <ChevronRight className={cn("h-3.5 w-3.5 text-faint transition-transform", open && "rotate-90")} />
       </button>
-      <EntryIcon entry={entry} open={open} />
-      <span className="min-w-0 flex-1 truncate">{entry.name}</span>
+      <EntryIcon entry={entry} open={open} isActive={isActive} />
+      <span className={cn("min-w-0 flex-1 truncate", isActive && "text-text font-medium")}>{entry.name}</span>
       {isFolder && routeInfo && <RouteBadge info={routeInfo} compact preview={routePreview} />}
     </div>
   );
@@ -296,6 +302,30 @@ export function FileTree({ filter }: { filter: string }) {
     setExpanded((ex) => new Set([...ex, ...chain]));
     for (const c of chain) void load(c);
   }, [revealFolder, load]);
+
+  // Auto-revelar la ruta en el árbol cuando se abre o activa cualquier nota/kata/canvas desde cualquier módulo
+  useEffect(() => {
+    if (!active) return;
+    const norm = active.replace(/\\/g, "/");
+    const parts = norm.split("/").filter(Boolean);
+    const folderParts = parts.slice(0, -1);
+    if (folderParts.length === 0) return;
+    const chain = folderParts.map((_, i) => folderParts.slice(0, i + 1).join("/"));
+
+    setExpanded((ex) => {
+      let changed = false;
+      const next = new Set(ex);
+      for (const c of chain) {
+        if (!next.has(c)) {
+          next.add(c);
+          changed = true;
+        }
+      }
+      return changed ? next : ex;
+    });
+
+    for (const c of chain) void load(c);
+  }, [active, load]);
 
   // (Re)load the root and every open folder whenever the tree changes.
   useEffect(() => {
@@ -439,6 +469,8 @@ export function FileTree({ filter }: { filter: string }) {
 
   const flatItems = useMemo<FlatTreeItem[]>(() => {
     const list: FlatTreeItem[] = [];
+    const normActive = active ? active.replace(/\\/g, "/") : "";
+
     // «Solo mi ruta»: solo los temas vivos del plan, sus carpetas contenedoras y lo que hay dentro de cada tema (nada se borra: solo se oculta)
     const insideLive = (p: string): boolean => {
       for (let q = p, i = 0; q && i < 12; i++) {
@@ -448,7 +480,23 @@ export function FileTree({ filter }: { filter: string }) {
       }
       return false;
     };
-    const shown = (e: TreeEntry): boolean => !routeOnly || (e.type === "folder" && routeOnly.ancestors.has(e.path)) || insideLive(e.path);
+
+    // La nota/kata activa y sus carpetas ancestro (junto a sus elementos hermanos en la carpeta contenedora) siempre son visibles aunque esté activo el filtro de ruta
+    const isPartOfActiveChain = (p: string): boolean => {
+      if (!normActive) return false;
+      const normP = p.replace(/\\/g, "/");
+      if (normP === normActive || normActive.startsWith(normP + "/")) return true;
+      const activeParent = parentOf(normActive);
+      if (activeParent && parentOf(normP) === activeParent) return true;
+      return false;
+    };
+
+    const shown = (e: TreeEntry): boolean =>
+      !routeOnly ||
+      (e.type === "folder" && routeOnly.ancestors.has(e.path)) ||
+      insideLive(e.path) ||
+      isPartOfActiveChain(e.path);
+
     function walk(entries: TreeEntry[] | undefined, depth: number) {
       if (!entries) return;
       for (const entry of entries) {
@@ -461,7 +509,7 @@ export function FileTree({ filter }: { filter: string }) {
     }
     walk(children[""], 0);
     return list;
-  }, [children, expanded, routeOnly]);
+  }, [children, expanded, routeOnly, active]);
 
   // al activar «Solo mi ruta» se abren las carpetas de materia y rama que llevan a los temas de la ruta
   useEffect(() => {
@@ -484,6 +532,31 @@ export function FileTree({ filter }: { filter: string }) {
     const el = treeContainerRef.current;
     if (el) el.scrollTop = Math.max(0, i * 30 - 90);
   }, [revealFolder, flatItems]);
+
+  // Auto-scroll para centrar y resaltar la nota/kata activa en el explorador
+  const lastScrolledActive = useRef<string | null>(null);
+  useEffect(() => {
+    if (!active) {
+      lastScrolledActive.current = null;
+      return;
+    }
+    const normActive = active.replace(/\\/g, "/");
+    if (lastScrolledActive.current === normActive) return;
+
+    const i = flatItems.findIndex((it) => it.entry.path.replace(/\\/g, "/") === normActive);
+    if (i < 0) return;
+
+    lastScrolledActive.current = normActive;
+    const el = treeContainerRef.current;
+    if (el) {
+      const targetScroll = Math.max(0, i * 30 - 100);
+      if (typeof el.scrollTo === "function") {
+        el.scrollTo({ top: targetScroll, behavior: "smooth" });
+      } else {
+        el.scrollTop = targetScroll;
+      }
+    }
+  }, [active, flatItems]);
 
   const treeVirtual = useVirtualList({
     itemCount: flatItems.length,
@@ -519,30 +592,36 @@ export function FileTree({ filter }: { filter: string }) {
         {filtered.length === 0 && <div className="px-2 py-3 text-[12px] text-faint">Sin coincidencias.</div>}
         <div style={{ height: filteredVirtual.totalHeight, position: "relative" }}>
           <div style={{ transform: `translateY(${filteredVirtual.startOffset}px)` }}>
-            {visibleFiltered.map((n) => (
-              <button
-                key={n.path}
-                type="button"
-                onClick={() => void useApp.getState().openNote(n.path)}
-                onContextMenu={(e) => {
-                  menuFor({
-                    type: "note",
-                    name: n.title,
-                    path: n.path,
-                    kind: n.path.endsWith(".canvas") ? "canvas" : "note",
-                  })(e);
-                }}
-                className={cn(
-                  "flex h-[46px] w-full flex-col justify-center rounded-md px-2 py-1 text-left",
-                  active === n.path ? "bg-accent-soft" : "hover:bg-hover",
-                )}
-              >
-                <span className="flex items-center gap-1.5 text-[13px] text-text">
-                  <FileText className="h-3.5 w-3.5 flex-none text-accent-text" /> <span className="truncate">{n.title}</span>
-                </span>
-                <span className="truncate pl-5 font-mono text-[10.5px] text-faint">{parentOf(n.path) || "/"}</span>
-              </button>
-            ))}
+            {visibleFiltered.map((n) => {
+              const isActiveItem = Boolean(active && active.replace(/\\/g, "/") === n.path.replace(/\\/g, "/"));
+              return (
+                <button
+                  key={n.path}
+                  type="button"
+                  onClick={() => void useApp.getState().openNote(n.path)}
+                  onContextMenu={(e) => {
+                    menuFor({
+                      type: "note",
+                      name: n.title,
+                      path: n.path,
+                      kind: n.path.endsWith(".canvas") ? "canvas" : "note",
+                    })(e);
+                  }}
+                  className={cn(
+                    "group relative flex h-[46px] w-full flex-col justify-center rounded-md px-2 py-1 text-left transition-colors",
+                    isActiveItem ? "bg-accent/20 ring-1 ring-accent/60" : "hover:bg-hover",
+                  )}
+                >
+                  {isActiveItem && (
+                    <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r bg-accent" aria-hidden="true" />
+                  )}
+                  <span className={cn("flex items-center gap-1.5 text-[13px]", isActiveItem ? "text-text font-medium" : "text-text")}>
+                    <FileText className={cn("h-3.5 w-3.5 flex-none", isActiveItem ? "text-accent" : "text-accent-text")} /> <span className="truncate">{n.title}</span>
+                  </span>
+                  <span className="truncate pl-5 font-mono text-[10.5px] text-faint">{parentOf(n.path) || "/"}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -570,7 +649,7 @@ export function FileTree({ filter }: { filter: string }) {
                 entry={entry}
                 depth={depth}
                 open={entry.type === "folder" && expanded.has(entry.path)}
-                isActive={active === entry.path}
+                isActive={Boolean(active && active.replace(/\\/g, "/") === entry.path.replace(/\\/g, "/"))}
                 isRevealed={revealFolder?.path === entry.path}
                 routeInfo={entry.type === "folder" ? routeSnap?.byFolder.get(entry.path) : undefined}
                 routePreview={route.preview}

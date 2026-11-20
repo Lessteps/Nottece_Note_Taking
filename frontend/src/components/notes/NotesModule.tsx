@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { ChevronRight } from "lucide-react";
 import { useApp } from "../../store/app";
 import { EditorArea } from "./EditorArea";
 import { Explorer } from "./Explorer";
@@ -53,7 +54,7 @@ export function NotesModule() {
 
   return (
     <div className="flex min-w-0 flex-1">
-      {explorerOpen && (
+      {explorerOpen ? (
         <>
           <Explorer width={width} />
           <div
@@ -64,6 +65,21 @@ export function NotesModule() {
             }}
           />
         </>
+      ) : (
+        <aside
+          aria-label="Explorador colapsado"
+          className="flex w-10 flex-none flex-col items-center border-r border-line bg-panel py-3 select-none"
+        >
+          <button
+            type="button"
+            onClick={() => useApp.getState().toggleExplorer()}
+            title="Mostrar explorador (Ctrl+\)"
+            aria-label="Mostrar explorador"
+            className="grid h-7 w-7 place-items-center rounded-md text-faint transition-colors hover:bg-hover hover:text-text cursor-pointer"
+          >
+            <ChevronRight size={14} />
+          </button>
+        </aside>
       )}
       {canvasPath ? <CanvasView /> : <EditorArea />}
       {/* El panel derecho vive en el armazón: es el mismo en todas las

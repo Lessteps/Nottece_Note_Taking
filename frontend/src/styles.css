@@ -93,6 +93,17 @@
   --color-info-soft: var(--nv-info-soft);
   --color-code: var(--nv-code-bg);
 
+  --color-accent-subtle: #1F2133;
+  --color-border-subtle: #242838;
+  --color-border-strong: #32374E;
+  --color-warning: #E5A93C;
+  --color-success: #4EBA86;
+  --color-dark-surface: #0F1117;
+  --color-dark-on-surface: #E6E8EE;
+  --color-dark-surface-variant: #161922;
+  --color-dark-on-surface-variant: #8E95A8;
+  --color-dark-outline: #282C3D;
+
   --font-sans: "Inter Variable", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   --font-mono: "JetBrains Mono Variable", "Cascadia Mono", Consolas, monospace;
 }
@@ -569,6 +580,54 @@ body {
 }
 [data-theme="light"] .hljs-title {
   color: #1a6fc4;
+}
+
+/* Real Code Editor Highlight Palette (VS Code Dark+ inspired) for code practice editor */
+.nv-code-highlight {
+  color: #d4d4d4;
+}
+.nv-code-highlight .hljs-keyword,
+.nv-code-highlight .hljs-selector-tag {
+  color: #c586c0;
+  font-weight: 600;
+}
+.nv-code-highlight .hljs-built_in {
+  color: #4ec9b0;
+}
+.nv-code-highlight .hljs-type,
+.nv-code-highlight .hljs-title.class_ {
+  color: #4ec9b0;
+  font-weight: 500;
+}
+.nv-code-highlight .hljs-function .hljs-title,
+.nv-code-highlight .hljs-title.function_ {
+  color: #dcdcaa;
+}
+.nv-code-highlight .hljs-string,
+.nv-code-highlight .hljs-attr,
+.nv-code-highlight .hljs-template-tag {
+  color: #ce9178;
+}
+.nv-code-highlight .hljs-number,
+.nv-code-highlight .hljs-literal {
+  color: #b5cea8;
+}
+.nv-code-highlight .hljs-comment,
+.nv-code-highlight .hljs-quote {
+  color: #6a9955;
+  font-style: italic;
+}
+.nv-code-highlight .hljs-variable,
+.nv-code-highlight .hljs-params {
+  color: #9cdcfe;
+}
+.nv-code-highlight .hljs-meta,
+.nv-code-highlight .hljs-decorator {
+  color: #d7ba7d;
+}
+.nv-code-highlight .hljs-punctuation,
+.nv-code-highlight .hljs-operator {
+  color: #d4d4d4;
 }
 
 /* Tables. */

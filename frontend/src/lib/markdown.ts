@@ -44,11 +44,31 @@ hljs.registerAliases(["md"], { languageName: "markdown" });
 
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp|svg)$/i;
 
+/** Normalizes any language descriptor (e.g. "Python 3.12", "TypeScript in strict mode", "py") to a known hljs identifier. */
+export function normalizeLanguage(language: string): string {
+  const lang = String(language || "").toLowerCase().trim();
+  if (!lang) return "python";
+  if (lang.includes("python") || lang.startsWith("py")) return "python";
+  if (lang.includes("typescript") || lang.startsWith("ts")) return "typescript";
+  if (lang.includes("javascript") || lang.startsWith("js") || lang.includes("node")) return "javascript";
+  if (lang.includes("java") && !lang.includes("javascript")) return "java";
+  if (lang.includes("c++") || lang.includes("cpp")) return "cpp";
+  if (lang === "c" || lang.startsWith("c ")) return "c";
+  if (lang.includes("rust") || lang === "rs") return "rust";
+  if (lang.includes("sql") || lang.includes("postgres") || lang.includes("sqlite") || lang.includes("mysql")) return "sql";
+  if (lang.includes("go") || lang.includes("golang")) return "go";
+  if (lang.includes("bash") || lang.includes("shell") || lang.includes("sh") || lang.includes("zsh")) return "bash";
+  if (lang.includes("html") || lang.includes("xml")) return "xml";
+  if (lang.includes("css")) return "css";
+  if (lang.includes("json")) return "json";
+  if (lang.includes("yaml") || lang.includes("yml")) return "yaml";
+  if (lang.includes("markdown") || lang === "md") return "markdown";
+  return lang;
+}
+
 /** Syntax-highlight a code buffer with the same language registry used by Markdown fences. */
 export function highlightCode(source: string, language: string): string {
-  const lang = String(language || "").toLowerCase();
-  const aliases: Record<string, string> = { py: "python", js: "javascript", jsx: "javascript", ts: "typescript", tsx: "typescript", postgres: "sql", postgresql: "sql", mysql: "sql", node: "javascript" };
-  const normalized = aliases[lang] || lang;
+  const normalized = normalizeLanguage(language);
   if (!normalized || !hljs.getLanguage(normalized)) return escapeHtml(source);
   return hljs.highlight(source, { language: normalized, ignoreIllegals: true }).value;
 }

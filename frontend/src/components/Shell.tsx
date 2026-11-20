@@ -317,7 +317,7 @@ function RightPanelToggle() {
   return (
     <button
       type="button"
-      title="Panel derecho (plegar / desplegar)"
+      title="Panel derecho (Ctrl+Alt+\)"
       aria-label="Panel derecho"
       aria-pressed={rightPanelOpen}
       onClick={(e) => {

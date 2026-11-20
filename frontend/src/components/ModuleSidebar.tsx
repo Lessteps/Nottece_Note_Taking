@@ -3,7 +3,6 @@
 import { useState, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "./ui";
-import { useApp } from "../store/app";
 
 export interface SidebarItem {
   id: string;
@@ -36,9 +35,6 @@ export function ModuleSidebar({
   onToggleCollapsed?: () => void;
   hideChildrenOnCollapse?: boolean;
 }) {
-  // El botón «Panel lateral» de la barra de título (Ctrl+\) pliega la columna de CUALQUIER módulo, no solo el explorador de Notas:
-  // así, en una ventana estrecha, el contenido recupera el ancho.
-  const open = useApp((s) => s.explorerOpen);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [internalCollapsed, setInternalCollapsed] = useState(() => {
     try {
@@ -64,7 +60,6 @@ export function ModuleSidebar({
     }
   };
 
-  if (!open) return null;
   return (
     <aside className={cn(
       "flex flex-none flex-col border-r border-line bg-panel transition-all duration-200",

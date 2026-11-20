@@ -1,20 +1,10 @@
 // Vista General: the four headline rates, the year streak grid and a table
 // with each habit's rates.
 
-import { Flame } from "lucide-react";
-import { useEffect, useMemo } from "react";
-import { addDays, level, pct, weekStart } from "../../lib/habits";
-import { MONTHS, todayIso } from "../../lib/tasks";
+import { pct } from "../../lib/habits";
 import { useHabits } from "../../store/habits";
+import { HabitHeatmap } from "./HabitHeatmap";
 import { Bar, Header, habitColour } from "./parts";
-
-const LEVEL_BG = [
-  "var(--nv-elevated)",
-  "color-mix(in srgb, var(--nv-accent) 30%, transparent)",
-  "color-mix(in srgb, var(--nv-accent) 55%, transparent)",
-  "color-mix(in srgb, var(--nv-accent) 80%, transparent)",
-  "var(--nv-accent)",
-];
 
 export function StatCards() {
   const stats = useHabits((s) => s.stats);
@@ -33,63 +23,6 @@ export function StatCards() {
           <Bar value={v} />
         </div>
       ))}
-    </div>
-  );
-}
-
-function StreakGrid() {
-  const rows = useHabits((s) => s.rows);
-  const loadRange = useHabits((s) => s.loadRange);
-  const streak = useHabits((s) => s.stats?.streak ?? 0);
-  const today = todayIso();
-  const first = addDays(weekStart(today), -52 * 7);
-
-  useEffect(() => {
-    void loadRange(first, today);
-  }, [first, today, loadRange]);
-
-  const weeks = useMemo(() => {
-    const out: string[][] = [];
-    for (let w = 0; w < 53; w++) {
-      out.push(Array.from({ length: 7 }, (_, d) => addDays(first, w * 7 + d)));
-    }
-    return out;
-  }, [first]);
-
-  return (
-    <div className="rounded-xl border border-line bg-card p-4">
-      <div className="mb-3 flex items-center">
-        <span className="text-[13px] font-semibold text-text">Habit Streak</span>
-        <span className="ml-auto flex items-center gap-1.5 text-[12px] text-dim">
-          <Flame size={14} className="text-warn" /> Racha: <b className="text-text">{streak}</b> {streak === 1 ? "día" : "días"}
-        </span>
-      </div>
-      <div className="flex gap-[3px] overflow-x-auto pb-1">
-        {weeks.map((week) => (
-          <div key={week[0]} className="flex flex-col gap-[3px]">
-            {week.map((d) => {
-              const r = rows[d];
-              const future = d > today;
-              const lv = r ? level(r.pct, r.active.length > 0) : 0;
-              return (
-                <span
-                  key={d}
-                  data-date={d}
-                  title={future ? d : `${d} · ${r ? `${r.done.length}/${r.active.length}` : "—"}`}
-                  className="block h-[11px] w-[11px] rounded-[3px]"
-                  style={{ background: future ? "transparent" : LEVEL_BG[lv] }}
-                />
-              );
-            })}
-          </div>
-        ))}
-      </div>
-      <div className="mt-2 flex items-center gap-1 text-[10.5px] text-faint">
-        <span>{MONTHS[Number(first.slice(5, 7)) - 1]} {first.slice(0, 4)}</span>
-        <span className="ml-auto">Menos</span>
-        {LEVEL_BG.map((bg) => <span key={bg} className="h-[10px] w-[10px] rounded-[3px]" style={{ background: bg }} />)}
-        <span>Más</span>
-      </div>
     </div>
   );
 }
@@ -125,12 +58,20 @@ function HabitTable() {
 }
 
 export function HabitOverview() {
+  const setView = useHabits((s) => s.setView);
+  const setDay = useHabits((s) => s.setDay);
+
+  const handleSelectDay = (d: string) => {
+    void setDay(d);
+    setView("diaria");
+  };
+
   return (
     <>
       <Header title="Vista general" />
-      <div className="flex-1 space-y-4 overflow-y-auto p-6">
+      <div className="flex-1 space-y-4 overflow-y-auto p-6 w-full">
         <StatCards />
-        <StreakGrid />
+        <HabitHeatmap onSelectDay={handleSelectDay} />
         <HabitTable />
       </div>
     </>

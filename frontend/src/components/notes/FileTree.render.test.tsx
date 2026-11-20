@@ -106,4 +106,23 @@ describe("FileTree rows", () => {
     expect(renders.n - before).toBeLessThanOrEqual(1);
     expect(host.querySelectorAll(".bg-accent-soft").length).toBe(1);
   });
+
+  it("automatically reveals and expands ancestor directories when an active note is set", async () => {
+    vi.spyOn(api, "listDir").mockImplementation(async (p?: string) => {
+      if (p === "F0") return [entry("F0/SubFolder", "folder")];
+      if (p === "F0/SubFolder") return [entry("F0/SubFolder/kata.md", "note")];
+      return [];
+    });
+
+    await act(async () => {
+      useApp.setState({ active: "F0/SubFolder/kata.md" });
+    });
+    await flush();
+
+    expect(api.listDir).toHaveBeenCalledWith("F0");
+    expect(api.listDir).toHaveBeenCalledWith("F0/SubFolder");
+    const activeRow = host.querySelector('[role="treeitem"].bg-accent-soft');
+    expect(activeRow).not.toBeNull();
+    expect(activeRow?.textContent).toContain("kata.md");
+  });
 });

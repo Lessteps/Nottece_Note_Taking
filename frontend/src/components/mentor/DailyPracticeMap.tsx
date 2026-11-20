@@ -31,7 +31,7 @@ export function DailyPracticeMap({
   onAddMonth?: () => void;
 }) {
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [zoom, setZoom] = useState(0.65);
+  const [zoom, setZoom] = useState(0.85);
   const [monthFilter, setMonthFilter] = useState(months[0]?.id ?? "");
   const [weekFilter, setWeekFilter] = useState(months[0]?.weeks[0]?.id ?? "");
   const [panning, setPanning] = useState(false);
@@ -158,9 +158,9 @@ export function DailyPracticeMap({
     const areaNodes: { area: AreaPracticeView; x: number; y: number; color: string }[] = [];
     const edges: { key: string; from: Point; to: Point; color?: string }[] = [];
     const colors = ["#9b87f5", "#60a5fa", "#34d399", "#fbbf24", "#fb7185", "#c084fc", "#22d3ee", "#fb923c"];
-    const center = { x: 1800, y: 1750 };
+    const center = { x: 1000, y: 950 };
     const weeks = selectedMonth?.weeks ?? [];
-    const weeksRadius = Math.max(780, weeks.length * 150);
+    const weeksRadius = Math.max(380, weeks.length * 80);
     const weekly = weeks.map((week, index) => {
       const a = -Math.PI / 2 + (index * 2 * Math.PI) / Math.max(weeks.length, 1);
       const point = { x: center.x + weeksRadius * Math.cos(a), y: center.y + weeksRadius * Math.sin(a) };
@@ -170,8 +170,8 @@ export function DailyPracticeMap({
     const hub = weekly.find((week) => week.week.id === selectedWeek?.id);
     const groups = lanes.filter((lane) => lane.items.length > 0);
     if (hub && groups.length > 0) {
-      // Radio amplio hacia los nodos de área para dar máxima holgura
-      const areaRadius = Math.max(480, groups.length * 90);
+      // Radio hacia los nodos de área
+      const areaRadius = Math.max(240, groups.length * 50);
       groups.forEach((group, index) => {
         const color = colors[areas.findIndex((area) => area.areaId === group.area.areaId) % colors.length] ?? "#9b87f5";
         const a = -Math.PI / 2 + (index * 2 * Math.PI) / groups.length;
@@ -179,8 +179,8 @@ export function DailyPracticeMap({
         areaNodes.push({ area: group.area, ...areaPoint, color });
         edges.push({ key: `${hub.week.id}:${group.area.areaId}`, from: hub, to: areaPoint, color });
         const practices = group.items;
-        // Radio generoso para que cada reto tenga espacio propio sin solapar textos
-        const radius = Math.max(160, practices.length * 32);
+        // Radio para los retos del área
+        const radius = Math.max(120, practices.length * 20);
         practices.forEach((practiceItem, i) => {
           // Desfase en a para que los nodos no caigan sobre la línea de unión del hub
           const angle = a + ((i + 0.5) * 2 * Math.PI) / practices.length;
@@ -193,7 +193,7 @@ export function DailyPracticeMap({
 
     const unlinked = lanes.flatMap((lane) => lane.items.filter((item) => !item.week).map((item) => ({ area: lane.area, item })));
     unlinked.forEach((practice, index) =>
-      nodes.push({ ...practice, x: 200 + (index % 5) * 220, y: 3100 + Math.floor(index / 5) * 120, color: "#8992a5" })
+      nodes.push({ ...practice, x: 100 + (index % 5) * 160, y: 1650 + Math.floor(index / 5) * 80, color: "#8992a5" })
     );
 
     return {
@@ -202,8 +202,8 @@ export function DailyPracticeMap({
       weekly,
       center,
       edges,
-      width: 3600,
-      height: unlinked.length > 0 ? Math.max(3600, 3200 + Math.ceil(unlinked.length / 5) * 120) : 3500,
+      width: 2000,
+      height: unlinked.length > 0 ? Math.max(1900, 1700 + Math.ceil(unlinked.length / 5) * 80) : 1900,
       hasUnlinked: unlinked.length > 0,
     };
   }, [lanes, areas, selectedMonth, selectedWeek]);
@@ -442,7 +442,7 @@ export function DailyPracticeMap({
         )}
       >
         <div style={{ width: width * zoom, height: height * zoom }}>
-          <div className="relative" style={{ width, height, transform: `scale(${zoom})`, transformOrigin: "top left", willChange: "transform" }}>
+          <div className="relative" style={{ width, height, transform: `scale(${zoom})`, transformOrigin: "top left" }}>
             <svg
               aria-hidden="true"
               className="pointer-events-none absolute inset-0"
@@ -521,7 +521,7 @@ export function DailyPracticeMap({
                 <span className="mt-1.5 text-xs font-bold tracking-wide" style={{ color }}>{area.label}</span>
               </button>
             ))}
-            {graph.hasUnlinked && <p className="absolute left-[80px] top-[3050px] text-xs font-semibold text-faint">Prácticas sin proyecto vinculado</p>}
+            {graph.hasUnlinked && <p className="absolute left-[80px] top-[1620px] text-xs font-semibold text-faint">Prácticas sin proyecto vinculado</p>}
             {graph.nodes.map(({ area, item: practice, x, y, color }) => {
               const active = area.areaId === lane?.area.areaId && practice.index === item?.index;
               return (

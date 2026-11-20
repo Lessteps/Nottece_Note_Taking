@@ -1,4 +1,4 @@
-import { CalendarDays, CalendarRange, LayoutGrid, ListChecks, Settings2, Sun } from "lucide-react";
+import { BarChart3, CalendarDays, CalendarRange, LayoutGrid, ListChecks, Settings2, Sun } from "lucide-react";
 import { useEffect } from "react";
 import { pct } from "../../lib/habits";
 import { useHabits, type HabitsView } from "../../store/habits";
@@ -8,25 +8,54 @@ import { HabitMonth, HabitWeek } from "./HabitGrid";
 import { HabitManage } from "./HabitManage";
 import { HabitOverview } from "./HabitOverview";
 import { HabitYear } from "./HabitYear";
-import { Bar, Empty } from "./parts";
+import { Empty } from "./parts";
 
 function SideStats() {
   const stats = useHabits((s) => s.stats);
-  const rows: Array<[string, number]> = [
-    ["Hoy", stats?.day ?? 0], ["Semana", stats?.week ?? 0], ["Mes", stats?.month ?? 0], ["Año", stats?.year ?? 0],
-  ];
+  const log = useHabits((s) => s.log);
+  const activeCount = log?.active?.length ?? 0;
+  const doneCount = log ? log.active.filter((id) => log.completed[id]).length : 0;
+  const todayPct = activeCount > 0 ? doneCount / activeCount : (stats?.day ?? 0);
+
   return (
-    <div className="px-4 pt-4">
-      <div className="mb-2 font-mono text-[10.5px] font-semibold uppercase tracking-wider text-faint">Estadísticas</div>
-      <div className="space-y-2.5">
-        {rows.map(([l, v]) => (
-          <div key={l}>
-            <div className="mb-1 flex text-[12px] text-dim"><span>{l}</span><span className="ml-auto font-mono">{pct(v)}</span></div>
-            <Bar value={v} />
+    <div className="mx-2.5 my-2 p-3 rounded-md bg-dark-surface border border-border-subtle">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[10.5px] font-mono font-semibold text-dark-on-surface-variant uppercase tracking-wider">
+          Estadísticas
+        </span>
+        <BarChart3 size={13} className="text-dark-on-surface-variant" />
+      </div>
+      <div className="space-y-2 text-[12px]">
+        <div>
+          <div className="flex items-center justify-between text-dark-on-surface-variant mb-1">
+            <span>Hoy</span>
+            <span className="font-code text-[11px] text-dark-on-surface">
+              {pct(todayPct)} {activeCount > 0 ? `(${doneCount}/${activeCount})` : ""}
+            </span>
           </div>
-        ))}
-        <div className="pt-1 text-[12px] text-dim">
-          Racha actual: <b className="text-text">{stats?.streak ?? 0}</b> {stats?.streak === 1 ? "día" : "días"}
+          <div className="w-full h-1.5 bg-dark-surface-variant rounded-full overflow-hidden">
+            <div
+              className="h-full bg-accent transition-[width]"
+              style={{ width: `${Math.round(todayPct * 100)}%` }}
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between pt-0.5">
+          <span className="text-dark-on-surface-variant">Semana</span>
+          <span className="font-code text-[11px] text-dark-on-surface">{pct(stats?.week ?? 0)}</span>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <span className="text-dark-on-surface-variant">Mes</span>
+          <span className="font-code text-[11px] text-dark-on-surface">{pct(stats?.month ?? 0)}</span>
+        </div>
+
+        <div className="flex items-center justify-between border-t border-border-subtle/60 pt-2 mt-1">
+          <span className="text-dark-on-surface-variant font-medium">Racha actual</span>
+          <span className="font-code text-[11px] font-semibold text-accent">
+            {stats?.streak ?? 0} {stats?.streak === 1 ? "día" : "días"}
+          </span>
         </div>
       </div>
     </div>

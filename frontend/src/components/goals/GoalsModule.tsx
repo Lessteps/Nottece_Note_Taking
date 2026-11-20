@@ -31,7 +31,6 @@ const Section = ({ children }: { children: string }) => (
 );
 
 export function GoalsModule() {
-  const explorerOpen = useApp((s) => s.explorerOpen);
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem("nv.sidebar.goals.collapsed") === "true";
@@ -73,11 +72,10 @@ export function GoalsModule() {
   const board = view === "tablero" && !openId;
   return (
     <div className="flex min-w-0 flex-1">
-      {explorerOpen && (
-        <aside className={cn(
-          "flex flex-none flex-col border-r border-line bg-panel transition-all duration-200",
-          collapsed ? "w-16" : "w-[240px]"
-        )}>
+      <aside className={cn(
+        "flex flex-none flex-col border-r border-line bg-panel transition-all duration-200",
+        collapsed ? "w-16" : "w-[240px]"
+      )}>
           <div className="flex h-10 flex-none items-center border-b border-line px-3">
             {!collapsed && (
               <span className="font-mono text-[10.5px] font-semibold uppercase tracking-wider text-faint truncate">
@@ -135,7 +133,6 @@ export function GoalsModule() {
             )}
           </nav>
         </aside>
-      )}
       <main className="flex min-w-0 flex-1 flex-col bg-surface">
         {!loaded ? <div className="grid flex-1 place-items-center text-[13px] text-faint">Cargando metas…</div>
           : openId ? <GoalView />

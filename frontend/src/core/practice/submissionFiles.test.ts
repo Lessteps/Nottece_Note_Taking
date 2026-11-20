@@ -15,8 +15,12 @@ it("guarda código Python y documentación por intento, sin sobreescribir", () =
   const rel = writePracticeSubmission(root, ex, note, attempt, 1)!;
   expect(fs.readFileSync(path.join(root, rel, "solucion.py"), "utf8")).toBe("print(24)\n");
   expect(fs.readFileSync(path.join(root, rel, "README.md"), "utf8")).toContain("Cuenta pedidos.");
+  // En ejercicios normales no se genera archivo duplicado en la raíz de la carpeta
+  const baseDir = path.join(root, "Programación/Tema/Ejercicios/implement/ejemplo");
+  expect(fs.existsSync(path.join(baseDir, "solucion.py"))).toBe(false);
   expect(writePracticeSubmission(root, ex, note, attempt, 1)).toBe(rel);
   const next = writePracticeSubmission(root, ex, note, { ...attempt, answer: "print(25)" }, 2)!;
   expect(next).not.toBe(rel);
   expect(fs.readFileSync(path.join(root, rel, "solucion.py"), "utf8")).toBe("print(24)\n");
+  expect(fs.existsSync(path.join(baseDir, "solucion.py"))).toBe(false);
 });
