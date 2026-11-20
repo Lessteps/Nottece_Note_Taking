@@ -195,8 +195,10 @@ function wikilinks(md: MarkdownIt) {
   md.renderer.rules.nv_embed = (tokens, idx) => {
     const { target, alias } = tokens[idx]!.meta as { target: string; alias: string };
     if (IMAGE_EXT.test(target.split("#")[0]!)) {
-      const width = /^\d+$/.test(alias) ? ` width="${alias}"` : "";
-      return `<img data-embed="${escapeHtml(target)}" alt="${escapeHtml(/^\d+$/.test(alias) ? "" : alias)}"${width}>`;
+      const size = /^(\d+)(?:x(\d+))?$/i.exec(alias);
+      const width = size ? ` width="${size[1]}"` : "";
+      const height = size?.[2] ? ` height="${size[2]}"` : "";
+      return `<img data-embed="${escapeHtml(target)}" alt="${escapeHtml(size ? "" : alias)}"${width}${height}>`;
     }
     return `<div class="note-embed" data-note-embed="${escapeHtml(target)}"></div>`;
   };
@@ -210,7 +212,9 @@ function wikilinks(md: MarkdownIt) {
       return `<span class="embed-missing">Imagen remota: <a href="${escapeHtml(src)}">${escapeHtml(alt || src)}</a></span>`;
     }
     if (src.startsWith("data:")) return "";
-    return `<img data-embed="${escapeHtml(decodeURI(src))}" alt="${escapeHtml(alt)}">`;
+    let decoded = src;
+    try { decoded = decodeURI(src); } catch { /* retain a literal percent in a local filename */ }
+    return `<img data-embed="${escapeHtml(decoded)}" alt="${escapeHtml(alt)}">`;
   };
 }
 

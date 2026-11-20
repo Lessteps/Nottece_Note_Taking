@@ -9,6 +9,17 @@ function dom(html: string): HTMLElement {
 }
 
 describe("callouts", () => {
+  it("admite dimensiones de imágenes al estilo Obsidian", () => {
+    const el = dom(renderMarkdown("![[foto.png|240x120]]"));
+    expect(el.querySelector("img")?.getAttribute("width")).toBe("240");
+    expect(el.querySelector("img")?.getAttribute("height")).toBe("120");
+  });
+
+  it("conserva rutas de imágenes con porcentajes literales", () => {
+    const el = dom(renderMarkdown("![foto](foto%25.png)"));
+    expect(el.querySelector("img")?.dataset.embed).toBe("foto%.png");
+  });
+
   it("turns > [!type] Title into a callout box", () => {
     const el = dom(renderMarkdown("> [!warning] Cuidado\n> Cuerpo del aviso."));
     const box = el.querySelector(".callout");

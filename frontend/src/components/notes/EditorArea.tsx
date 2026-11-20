@@ -357,6 +357,7 @@ function Editor({ note }: { note: OpenNote }) {
     <Suspense fallback={<div className="grid h-full place-items-center bg-surface text-[12px] text-faint">Cargando editor…</div>}>
       <SourceEditor
         key={note.path}
+        notePath={note.path}
         value={note.raw}
         eol={note.eol}
         code={note.kind === "code"}

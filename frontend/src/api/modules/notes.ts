@@ -540,6 +540,32 @@ export function notesApi(app: AppState) {
       return new KnowledgeGraph(app.root).buildGraph();
     },
 
+    import_note_image(note_rel: string, name: string, data: string): { markdown: string; path: string } {
+      const note = app.resolve(note_rel);
+      if (!fs.existsSync(note) || !fs.statSync(note).isFile() || path.extname(note).toLowerCase() !== ".md") throw new ApiError("La nota no existe.");
+      if (!isInside(fs.realpathSync(app.root), fs.realpathSync(note))) throw new ApiError("La nota está fuera del vault.");
+      const input = String(data || "");
+      if (input.length > Math.ceil(MAX_ATTACHMENT_BYTES * 4 / 3) + 4 || !/^[A-Za-z0-9+/]*={0,2}$/.test(input)) throw new ApiError("Imagen inválida o demasiado grande.");
+      const bytes = Buffer.from(input, "base64");
+      if (!bytes.length || bytes.length > MAX_ATTACHMENT_BYTES) throw new ApiError("Imagen vacía o demasiado grande (15 MB).");
+      const signature = bytes.subarray(0, 16);
+      const type = signature.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex")) ? ".png" : signature[0] === 0xff && signature[1] === 0xd8 && signature[2] === 0xff ? ".jpg" : signature.subarray(0, 6).toString("ascii").match(/^GIF8[79]a$/) ? ".gif" : signature.subarray(0, 4).toString("ascii") === "RIFF" && signature.subarray(8, 12).toString("ascii") === "WEBP" ? ".webp" : null;
+      if (!type) throw new ApiError("Formato de imagen no admitido. Usa PNG, JPEG, GIF o WebP.");
+      const folder = path.join(path.dirname(note), "attachments");
+      if (fs.existsSync(folder) && (fs.lstatSync(folder).isSymbolicLink() || !fs.lstatSync(folder).isDirectory())) throw new ApiError("La carpeta de adjuntos no es válida.");
+      fs.mkdirSync(folder, { recursive: true });
+      if (!isInside(app.root, fs.realpathSync(folder))) throw new ApiError("La carpeta de adjuntos está fuera del vault.");
+      const raw = path.basename(String(name || "Imagen")).replace(/\.[^.]+$/, "").replace(/[\\/:*?"<>|#\[\]\x00-\x1f]/g, "_").trim().slice(0, 100) || "Imagen";
+      let file = "";
+      for (let n = 0; n < 10000; n++) {
+        const candidate = path.join(folder, `${raw}${n ? ` ${n}` : ""}${type}`);
+        try { fs.writeFileSync(candidate, bytes, { flag: "wx" }); file = candidate; break; }
+        catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
+      }
+      if (!file) throw new ApiError("No se pudo elegir un nombre para la imagen.");
+      return { markdown: `![[attachments/${path.basename(file)}]]`, path: app.rel(file).replace(/\\/g, "/") };
+    },
+
     read_attachment(note_rel: string, name: string): { data_url: string } {
       const note = app.resolve(note_rel);
       const cleanName = (name || "").trim();

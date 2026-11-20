@@ -54,6 +54,15 @@ describe("block live preview", () => {
     expect(v.dom.querySelector(".cm-nv-table table")).not.toBeNull();
   });
 
+  it("conserva los bloques al escribir y actualiza las reglas cuando cambia la estructura", () => {
+    const v = mount("Texto normal\n\n---\n\nFinal", 3);
+    v.dispatch({ changes: { from: 3, insert: "x" } });
+    expect(v.dom.querySelector(".cm-nv-rule hr")).not.toBeNull();
+    const start = v.state.doc.toString().indexOf("---");
+    v.dispatch({ changes: { from: start, to: start + 3, insert: "tres" } });
+    expect(v.dom.querySelector(".cm-nv-rule hr")).toBeNull();
+  });
+
   it("writes an edited cell back as a tidy table", () => {
     const v = mount(DOC);
     const cell = v.dom.querySelector<HTMLElement>('.cm-nv-table td[data-r="1"][data-c="0"]')!;

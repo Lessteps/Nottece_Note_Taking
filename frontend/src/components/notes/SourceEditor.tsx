@@ -1,7 +1,7 @@
 // CodeMirror 6: the markdown source editor.
 
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { markdown } from "@codemirror/lang-markdown";
+import { markdown, markdownKeymap } from "@codemirror/lang-markdown";
 import { yamlFrontmatter } from "@codemirror/lang-yaml";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
@@ -11,8 +11,11 @@ import {
 } from "@codemirror/view";
 import { tags as t } from "@lezer/highlight";
 import { useEffect, useRef } from "react";
-import { insertTable, toggleTask, wrap } from "../../lib/editorCommands";
+import { api } from "../../lib/bridge";
+import { useApp } from "../../store/app";
+import { insertLink, insertTable, toggleTask, wrap } from "../../lib/editorCommands";
 import { livePreview } from "../../lib/livePreview";
+import { liveImages } from "../../lib/liveImages";
 import { hierarchicalNumbers } from "../../lib/listNumbering";
 import { livePreviewBlocks } from "../../lib/livePreviewBlocks";
 
@@ -21,6 +24,8 @@ const mdKeymap = keymap.of([
   { key: "Mod-b", run: (v) => wrap(v, "**") },
   { key: "Mod-i", run: (v) => wrap(v, "*") },
   { key: "Mod-l", run: toggleTask },
+  { key: "Mod-k", run: insertLink },
+  { key: "Mod-Shift-x", run: (v) => wrap(v, "~~") },
   { key: "Mod-Shift-t", run: (v) => insertTable(v) },
 ]);
 
@@ -86,6 +91,7 @@ const theme = EditorView.theme({
   ".cm-nv-number": { color: "var(--nv-accent-text)", fontWeight: "600", fontVariantNumeric: "tabular-nums" },
   // Bloques dibujados (lib/livePreviewBlocks): frontmatter, tablas, fórmulas y
   // reglas se ven como en la lectura; el Markdown crudo aparece donde está el cursor.
+  ".cm-nv-image img": { display: "block", maxWidth: "100%", height: "auto", margin: "8px 0", borderRadius: "4px" },
   ".cm-nv-block": { margin: "10px 0", cursor: "default" },
   ".cm-nv-fm, .cm-nv-math-block, .cm-nv-rule": { cursor: "text" },
   ".cm-nv-table.nv-prose": { maxWidth: "none", margin: "10px 0", overflowX: "auto" },
@@ -140,8 +146,9 @@ export function insertAtCursor(text: string): boolean {
 }
 
 export function SourceEditor({
-  value, eol, code, numbered, onChange, onCursor, revealLine, onRevealed,
+  notePath = "", value, eol, code, numbered, onChange, onCursor, revealLine, onRevealed,
 }: {
+  notePath?: string;
   value: string;
   eol: "\n" | "\r\n";
   code: boolean;
@@ -153,6 +160,26 @@ export function SourceEditor({
   onRevealed?: () => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
+  const picker = useRef<HTMLInputElement>(null);
+  const insertImages = async (files: File[]) => {
+    const target = view.current;
+    if (!target || !notePath) return;
+    for (const file of files) {
+      try {
+        if (file.size > 15 * 1024 * 1024) throw new Error("La imagen supera los 15 MB.");
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
+          reader.onerror = () => reject(new Error("No se pudo leer la imagen."));
+          reader.readAsDataURL(file);
+        });
+        const result = await api.importNoteImage(notePath, file.name || `Imagen pegada ${Date.now()}`, base64);
+        if (view.current !== target) { useApp.getState().toast("info", `Imagen guardada en ${result.path}; abre la nota para insertarla.`); continue; }
+        target.dispatch(target.state.replaceSelection(result.markdown));
+        target.focus();
+      } catch (error) { useApp.getState().toast("error", (error as Error).message || "No se pudo insertar la imagen."); }
+    }
+  };
   const view = useRef<EditorView | null>(null);
   // Latest callbacks without rebuilding the editor on every render.
   const cb = useRef({ onChange, onCursor });
@@ -169,7 +196,7 @@ export function SourceEditor({
         EditorState.lineSeparator.of(eol),
         // A note is read, not debugged: no gutter, and the Markdown markers are
         // hidden (see livePreview). Code files keep both.
-        ...(code ? [lineNumbers(), highlightActiveLineGutter()] : [livePreview, ...livePreviewBlocks]),
+        ...(code ? [lineNumbers(), highlightActiveLineGutter()] : [livePreview, ...(notePath ? [liveImages(notePath)] : []), ...livePreviewBlocks]),
         ...(numbered && !code ? [hierarchicalNumbers] : []),
         history(),
         drawSelection(),
@@ -177,7 +204,7 @@ export function SourceEditor({
         highlightSelectionMatches(),
         EditorView.lineWrapping,
         ...(code ? [] : [mdKeymap]),
-        keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
+        keymap.of([...(code ? [] : markdownKeymap), ...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
         // The YAML block on top is YAML, not markdown (else "key: v\n---"
         // reads as a setext heading).
         ...(code ? [] : [yamlFrontmatter({ content: markdown() }), syntaxHighlighting(mdHighlight)]),
@@ -185,7 +212,11 @@ export function SourceEditor({
         EditorView.editorAttributes.of({ class: code ? "cm-code" : "" }),
         EditorView.contentAttributes.of({ spellcheck: code ? "false" : "true", lang: "es" }),
         // With two editors (split view) the tools act on the focused one.
-        EditorView.domEventHandlers({ focus: (_e, view) => { activeEditor.view = view; } }),
+        EditorView.domEventHandlers({
+          focus: (_e, view) => { activeEditor.view = view; },
+          paste: (event) => { const files = Array.from(event.clipboardData?.files ?? []).filter((file) => file.type.startsWith("image/")); if (!files.length || code || !notePath) return false; event.preventDefault(); void insertImages(files); return true; },
+          drop: (event, editor) => { const files = Array.from(event.dataTransfer?.files ?? []).filter((file) => file.type.startsWith("image/")); if (!files.length || code || !notePath) return false; event.preventDefault(); const pos = editor.posAtCoords({ x: event.clientX, y: event.clientY }); if (pos !== null) editor.dispatch({ selection: { anchor: pos } }); void insertImages(files); return true; },
+        }),
         EditorView.updateListener.of((u) => {
           if (u.docChanged) {
             const text = u.state.sliceDoc();
@@ -245,5 +276,10 @@ export function SourceEditor({
     onRevealed?.();
   }, [revealLine, onRevealed]);
 
-  return <div ref={host} className="h-full min-h-0 select-text" />;
+  useEffect(() => {
+    const open = () => { if (activeEditor.view === view.current && !code && notePath) picker.current?.click(); };
+    window.addEventListener("nv-insert-note-image", open);
+    return () => window.removeEventListener("nv-insert-note-image", open);
+  }, [code, notePath]);
+  return <div className="h-full min-h-0 select-text"><div ref={host} className="h-full min-h-0" /><input ref={picker} type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden aria-label="Seleccionar imágenes" onChange={(event) => { void insertImages(Array.from(event.currentTarget.files ?? [])); event.currentTarget.value = ""; }} /></div>;
 }

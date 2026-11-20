@@ -4,7 +4,7 @@
 // sintaxis: escribe la que el archivo ya usa.
 
 import {
-  Bold, Code, Eraser, Italic, Link as LinkIcon, List, ListOrdered, ListTodo, Minus,
+  Bold, Code, Eraser, ImagePlus, Italic, Link as LinkIcon, List, ListOrdered, ListTodo, Minus,
   Quote, Strikethrough, Table2,
 } from "lucide-react";
 import {
@@ -84,6 +84,7 @@ export function FormatBar({ floating }: { floating?: boolean }) {
       <Btn label="Lista de tareas (Ctrl+L)" onClick={() => run(toggleTask)}><ListTodo size={14} /></Btn>
       <Btn label="Cita" onClick={() => run((v) => togglePrefix(v, "> "))}><Quote size={14} /></Btn>
       <Sep />
+      <Btn label="Insertar imagen" onClick={() => window.dispatchEvent(new Event("nv-insert-note-image"))}><ImagePlus size={14} /></Btn>
       <Btn label="Enlace" onClick={() => run(insertLink)}><LinkIcon size={14} /></Btn>
       <Btn label="Bloque de código" onClick={() => run(insertCodeBlock)}><Code size={14} /></Btn>
       <Btn label="Tabla (Ctrl+Shift+T)" onClick={() => run((v) => insertTable(v))}><Table2 size={14} /></Btn>

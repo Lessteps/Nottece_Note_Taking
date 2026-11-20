@@ -198,6 +198,7 @@ export const api = {
   bookmarks: () => call<Bookmark[]>("bookmarks"),
   toggleBookmark: (path: string) => call<{ bookmarked: boolean }>("toggle_bookmark", path),
 
+  importNoteImage: (notePath: string, name: string, base64: string) => call<{ markdown: string; path: string }>("import_note_image", notePath, name, base64),
   readAttachment: (notePath: string, name: string) =>
     call<{ data_url: string }>("read_attachment", notePath, name),
 

@@ -287,11 +287,13 @@ class TableWidget extends WidgetType {
 
 // ── The field ───────────────────────────────────────────────────────────────
 
+const blockCache = new WeakMap<EditorState["doc"], ReturnType<typeof scanBlocks>>();
 function buildBlocks(state: EditorState): DecorationSet {
   const doc = state.doc;
-  const lines = doc.toString().split("\n");
+  let blocks = blockCache.get(doc);
+  if (!blocks) { blocks = scanBlocks(doc.toString().split("\n")); blockCache.set(doc, blocks); }
   const out: Array<Range<Decoration>> = [];
-  for (const b of scanBlocks(lines)) {
+  for (const b of blocks) {
     const from = doc.line(b.from + 1).from;
     const to = doc.line(b.to + 1).to;
     const raw = doc.sliceString(from, to);
@@ -309,7 +311,18 @@ function buildBlocks(state: EditorState): DecorationSet {
 const blocksField = StateField.define<DecorationSet>({
   create: buildBlocks,
   update(value, tr) {
-    return tr.docChanged || tr.selection ? buildBlocks(tr.state) : value;
+    if (!tr.docChanged) return tr.selection ? buildBlocks(tr.state) : value;
+    // Ordinary typing outside rendered blocks cannot change their structure.
+    // Map existing decorations instead of rescanning the entire document per key.
+    let structural = false;
+    tr.changes.iterChangedRanges((fromA, toA, fromB, toB) => {
+      const oldDoc = tr.startState.doc, newDoc = tr.state.doc;
+      const oldStart = oldDoc.lineAt(fromA), oldEnd = oldDoc.lineAt(toA);
+      const newStart = newDoc.lineAt(fromB), newEnd = newDoc.lineAt(toB);
+      if (!oldStart.text.trim() || !newStart.text.trim() || oldStart.number !== oldEnd.number || newStart.number !== newEnd.number || /[|$`~*_\-]/.test(oldStart.text + newStart.text)) structural = true;
+      value.between(oldStart.from, oldEnd.to, () => { structural = true; });
+    });
+    return structural ? buildBlocks(tr.state) : value.map(tr.changes);
   },
   provide: (f) => [
     EditorView.decorations.from(f),

@@ -144,6 +144,16 @@ describe("notesApi", () => {
     expect(api.bookmarks().map((b) => b.path)).toContain("Target.md");
   });
 
+  it("imports pasted images next to the note without overwriting or escaping the vault", () => {
+    const first = api.import_note_image("Programación/Spec.md", "captura.png", PNG_1PX.toString("base64"));
+    const second = api.import_note_image("Programación/Spec.md", "captura.png", PNG_1PX.toString("base64"));
+    expect(first.markdown).toBe("![[attachments/captura.png]]");
+    expect(second.markdown).toBe("![[attachments/captura 1.png]]");
+    expect(api.read_attachment("Programación/Spec.md", "attachments/captura.png").data_url).toContain("data:image/png;base64,");
+    expect(() => api.import_note_image("../outside.md", "x.png", PNG_1PX.toString("base64"))).toThrow();
+    expect(() => api.import_note_image("Programación/Spec.md", "x.png", Buffer.from("not image").toString("base64"))).toThrow();
+  });
+
   it("read_attachment returns base64 data url for images and blocks outside", () => {
     const res = api.read_attachment("Programación/Spec.md", "pic.png");
     expect(res.data_url.startsWith("data:image/png;base64,")).toBe(true);
