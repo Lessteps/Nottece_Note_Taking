@@ -169,6 +169,29 @@ describe("save", () => {
     expect(note("nota.md")).toMatchObject({ dirty: true, modified: 2, saving: false });
   });
 
+  it("reprograma el último cambio si su autosave venció durante una escritura lenta", async () => {
+    vi.useFakeTimers();
+    seeded("nota.md", { dirty: true, raw: "primero\n" });
+    let finish!: (v: unknown) => void;
+    let writes = 0;
+    override = (method) => {
+      if (method !== "write_note") return { ok: true };
+      writes++;
+      return writes === 1 ? new Promise((resolve) => { finish = resolve; }) : { ok: true, conflict: false, modified: 3 };
+    };
+    const first = app().save("nota.md");
+    await flush();
+    app().editRaw("nota.md", "primero y segundo\n");
+    await vi.advanceTimersByTimeAsync(1200);
+    expect(writes).toBe(1);
+    finish({ ok: true, conflict: false, modified: 2 });
+    await first;
+    await vi.advanceTimersByTimeAsync(1200);
+    expect(writes).toBe(2);
+    expect(note("nota.md")).toMatchObject({ dirty: false, modified: 3 });
+    expect(calls("write_note")[1]?.[1]).toEqual(["nota.md", "primero y segundo\n", 2]);
+  });
+
   it("dos guardados a la vez: el segundo no pisa al primero", async () => {
     seeded("nota.md", { dirty: true, raw: "a\n" });
     let resolveWrite!: (v: unknown) => void;

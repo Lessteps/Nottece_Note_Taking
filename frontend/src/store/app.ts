@@ -766,6 +766,12 @@ export const useApp = create<State>((setState, get) => {
           },
         };
       });
+      // An autosave timer can expire while the previous write is still in flight.
+      // If newer edits remain and no timer is active, schedule their own save.
+      const latest = get().notes[path];
+      if (!res.conflict && latest?.dirty && !saveTimers.has(path)) {
+        saveTimers.set(path, setTimeout(() => void get().save(path), AUTOSAVE_MS));
+      }
       // The YAML block changed: re-read it (Python parses it) so the
       // metadata card shows what was just saved.
       const savedFm = frontmatterText(raw);
