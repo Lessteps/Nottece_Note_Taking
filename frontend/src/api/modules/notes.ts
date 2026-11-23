@@ -56,6 +56,14 @@ function git(root: string, args: string[], strict = false): string | null {
   }
 }
 
+const NOTE_INDEX_TTL_MS = 300_000;
+const _noteIndexCache = new Map<string, { limit: number; ts: number; items: { path: string; title: string }[] }>();
+
+export function clearNoteIndexCache(root?: string): void {
+  if (root) _noteIndexCache.delete(path.resolve(root));
+  else _noteIndexCache.clear();
+}
+
 export function notesApi(app: AppState) {
   return {
     save_text_as(suggestedName: string, text: string): Record<string, unknown> {
@@ -97,10 +105,16 @@ export function notesApi(app: AppState) {
       return app.service.childrenOf(folder).map((i) => app.entry(i));
     },
 
-    note_index(limit = 5000): { path: string; title: string }[] {
+    async note_index(limit = 5000): Promise<{ path: string; title: string }[]> {
       const lim = Math.max(1, Math.min(Number(limit) || 5000, 20000));
+      const key = path.resolve(app.root);
+      const hit = _noteIndexCache.get(key);
+      if (hit && hit.limit >= lim && Date.now() - hit.ts < NOTE_INDEX_TTL_MS) {
+        return hit.items.slice(0, lim);
+      }
+      const paths = await app.vault.notePathsAsync(lim);
       const out: { path: string; title: string }[] = [];
-      for (const p of app.vault.notePaths(lim)) {
+      for (const p of paths) {
         let relPath: string;
         try {
           relPath = app.rel(p);
@@ -110,6 +124,7 @@ export function notesApi(app: AppState) {
         if (relPath.split("/").some((part) => part.startsWith("."))) continue;
         out.push({ path: relPath, title: path.parse(p).name });
       }
+      _noteIndexCache.set(key, { limit: lim, ts: Date.now(), items: out });
       return out;
     },
 
@@ -228,7 +243,7 @@ export function notesApi(app: AppState) {
       return { path: app.rel(app.service.movePath(src, dest)) };
     },
 
-    resolve_link(target: string): { path: string | null } {
+    async resolve_link(target: string): Promise<{ path: string | null }> {
       const clean = (target || "").split("#")[0]!.split("|")[0]!.trim();
       if (!clean || clean.replace(/\\/g, "/").split("/").includes("..")) {
         return { path: null };
@@ -243,9 +258,9 @@ export function notesApi(app: AppState) {
         return { path: app.rel(cand2) };
       }
 
-      // Check note index for exact name/stem match
+      // Check note index asynchronously so cold links never block Electron's main thread
       const targetLower = clean.toLowerCase();
-      const notes = app.service.index.ready ? app.service.index.cachedNotes() : app.service.index.notes();
+      const notes = await app.service.index.ensureReadyAsync();
       for (const entry of notes) {
         const p = entry.path;
         const stem = path.parse(p).name.toLowerCase();
@@ -270,13 +285,14 @@ export function notesApi(app: AppState) {
       return { path: null };
     },
 
-    search(
+    async search(
       query: string,
       limit = 100,
-    ): { path: string; title: string; line_no: number; line: string }[] {
+    ): Promise<{ path: string; title: string; line_no: number; line: string }[]> {
       const q = (query || "").trim();
       if (!q) return [];
       const lim = Math.max(1, Math.min(Number(limit) || 100, 500));
+      await app.service.index.ensureReadyAsync();
       return app.service.search(q, lim).map((h) => ({
         path: app.rel(h.path),
         title: h.title,
@@ -285,12 +301,13 @@ export function notesApi(app: AppState) {
       }));
     },
 
-    mentions(rel: string): {
+    async mentions(rel: string): Promise<{
       linked: { path: string; title: string; line_no: number; line: string }[];
       unlinked: { path: string; title: string; line_no: number; line: string }[];
-    } {
+    }> {
       const p = app.resolve(rel);
       const note = new Note(p, app.root);
+      await app.service.index.ensureReadyAsync();
       const [linked, unlinked] = app.service.mentions(note);
       const row = (m: { path: string; title: string; line_no: number; line: string }) => ({
         path: app.rel(m.path),

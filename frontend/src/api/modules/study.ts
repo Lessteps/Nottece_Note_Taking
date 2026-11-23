@@ -50,7 +50,7 @@ import {
   loadExamRecordForTopic,
 } from "../../core/practice/exams.js";
 import { loadAllAttempts } from "../../core/practice/ledger.js";
-import { clearExerciseIndexCache, warmNoteCache } from "../../core/practice/exerciseIndex.js";
+import { clearExerciseIndexCache, scanVaultAsync } from "../../core/practice/exerciseIndex.js";
 import { AIConfig, sendChat } from "../../core/aiClient.js";
 import { currentAiSignal } from "../../core/aiAbort.js";
 import {
@@ -86,7 +86,7 @@ import {
 import { AppConfig } from "../appConfig.js";
 import type { DifficultyLevel } from "../../core/practice/skills.js";
 import type { AppState } from "../appState.js";
-import { clearVaultScanCache, hasVaultScan, vaultScan } from "../vaultScan.js";
+import { clearVaultScanCache, hasVaultScan, setVaultScanCache, vaultScan } from "../vaultScan.js";
 import { isoDate } from "../common.js";
 import { stampSkillVersion } from "./skillFreshness.js";
 
@@ -182,25 +182,24 @@ const _dashboardRefreshing = new Set<string>();
 let _indexWarmed = false;
 /** Vaults whose background scan has already been kicked off. */
 const _scanKicked = new Set<string>();
+let _warmingPromise: Promise<{ notes: number; ms: number }> | null = null;
 
 /**
  * True while the vault index is still cold (nothing scanned yet and the background warm-up
- * not finished); in that case it also starts the scan in the background. Callers that need
- * the whole-vault scan (the Mentor) answer `loading` instead of blocking the main process.
+ * not finished); in that case it also starts the async scan in the background without
+ * ever blocking the Electron main thread.
  */
 export function studyIndexCold(app: AppState): boolean {
   if (hasVaultScan(app.root) || _indexWarmed) return false;
   if (!_scanKicked.has(app.root)) {
     _scanKicked.add(app.root);
-    setImmediate(() => {
-      try {
-        vaultScan(app);
-      } catch {
+    void warmStudyIndex(app)
+      .catch(() => {
         /* the renderer's retry will surface any error */
-      } finally {
+      })
+      .finally(() => {
         _scanKicked.delete(app.root);
-      }
-    });
+      });
   }
   return true;
 }
@@ -210,26 +209,30 @@ export function clearStudySnapshotCache(): void {
   _dashboardCache.clear();
   clearVaultScanCache();
   _scanKicked.clear();
+  _indexWarmed = false;
 }
 
 /**
- * Read the vault into the per-file cache in the background, once the window is up.
- *
- * The first study view opened in a cold process used to wait for the whole vault to
- * be read (measured: 30 s over 2 107 notes, with the main process blocked the whole
- * time). Warming it here — in batches, yielding between them — moves that cost to
- * right after launch, where nothing is waiting for it.
+ * Read the vault into the per-file cache asynchronously in the background, once the window is up.
+ * Uses non-blocking fs.promises + setTimeout yields so Windows never triggers AppHangB1.
  */
-export async function warmStudyIndex(): Promise<{ notes: number; ms: number }> {
-  const app = getWarmApp();
+export async function warmStudyIndex(targetApp?: AppState): Promise<{ notes: number; ms: number }> {
+  const app = targetApp ?? getWarmApp();
   if (!app) return { notes: 0, ms: 0 };
+  if (_warmingPromise) return _warmingPromise;
   const started = Date.now();
-  const notes = await warmNoteCache(app.vault.notePaths());
-  try {
-    vaultScan(app);
-  } catch {}
-  _indexWarmed = true;
-  return { notes, ms: Date.now() - started };
+  _warmingPromise = (async () => {
+    try {
+      const paths = await app.vault.notePathsAsync();
+      const scan = await scanVaultAsync(app.root, paths);
+      setVaultScanCache(app.root, scan);
+      _indexWarmed = true;
+      return { notes: scan.notes.length, ms: Date.now() - started };
+    } finally {
+      _warmingPromise = null;
+    }
+  })();
+  return _warmingPromise;
 }
 
 /** Set by the registry (the study module is built against an AppState). */

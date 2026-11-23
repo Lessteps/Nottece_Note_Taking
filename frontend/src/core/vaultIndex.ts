@@ -36,6 +36,7 @@ export class IndexedNote {
 export interface VaultIndexTarget {
   vaultRoot: string;
   notePaths(limit?: number): string[];
+  notePathsAsync?(limit?: number): Promise<string[]>;
 }
 
 export class VaultIndex {
@@ -56,6 +57,7 @@ export class VaultIndex {
   private entries = new Map<string, [[number, number], IndexedNote]>();
   private walked = 0;
   private isReady = false;
+  private warming: Promise<IndexedNote[]> | null = null;
 
   constructor(vault: VaultIndexTarget) {
     this.vault = vault;
@@ -109,6 +111,67 @@ export class VaultIndex {
 
   cachedNotes(): IndexedNote[] {
     return Array.from(this.entries.values()).map(([, note]) => note);
+  }
+
+  /** Non-blocking refresh of the in-memory note index so search/mentions never freeze Electron on Windows. */
+  async ensureReadyAsync(force: boolean = false): Promise<IndexedNote[]> {
+    const now = performance.now();
+    if (this.isReady && !force && now - this.walked < WALK_INTERVAL_MS) {
+      return this.cachedNotes();
+    }
+    if (this.warming && !force) {
+      return this.warming;
+    }
+
+    const task = (async (): Promise<IndexedNote[]> => {
+      const known = new Map(this.entries);
+      const nextEntries = new Map<string, [[number, number], IndexedNote]>();
+      const paths = this.vault.notePathsAsync
+        ? await this.vault.notePathsAsync()
+        : this.vault.notePaths();
+
+      const BATCH = 64;
+      for (let i = 0; i < paths.length; i += BATCH) {
+        const chunk = paths.slice(i, i + BATCH);
+        await Promise.all(
+          chunk.map(async (p) => {
+            const resolved = fsPath(p);
+            let stat: fs.Stats;
+            try {
+              stat = await fs.promises.stat(resolved);
+            } catch {
+              return;
+            }
+            const stamp: [number, number] = [stat.mtimeMs, stat.size];
+            const normPath = toPosix(path.resolve(p));
+            const cached = known.get(normPath);
+            if (cached && cached[0][0] === stamp[0] && cached[0][1] === stamp[1]) {
+              nextEntries.set(normPath, cached);
+              return;
+            }
+            try {
+              const text = await fs.promises.readFile(resolved, "utf-8");
+              const title = path.parse(p).name;
+              nextEntries.set(normPath, [stamp, new IndexedNote(normPath, title, text)]);
+            } catch {
+              return;
+            }
+          }),
+        );
+      }
+
+      this.entries = nextEntries;
+      this.walked = performance.now();
+      this.isReady = true;
+      return Array.from(nextEntries.values()).map(([, note]) => note);
+    })();
+
+    this.warming = task;
+    try {
+      return await task;
+    } finally {
+      if (this.warming === task) this.warming = null;
+    }
   }
 
   update(filePath: string, text: string): void {

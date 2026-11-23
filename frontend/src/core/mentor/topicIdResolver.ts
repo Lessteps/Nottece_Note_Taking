@@ -18,6 +18,7 @@ export interface VaultTopicAssets {
   topicId: string;
   title: string;
   frontmatterId?: string;
+  extraIds?: string[];
   planId?: string;
   areaId?: string;
   theoryNote: string | null;
@@ -80,45 +81,57 @@ export function canonicalTopicId(areaId: string | undefined, folderOrTitle: stri
   return `${prefix}.${slug}`;
 }
 
+function parseFrontmatterLiteFromBuffer(buf: Buffer, bytes: number): Record<string, string> {
+  const head = buf.subarray(0, bytes).toString("utf-8").replace(/\r\n/g, "\n");
+  if (!head.startsWith("---\n")) return {};
+  const end = head.indexOf("\n---\n", 4);
+  if (end < 0) return {};
+  const block = head.slice(4, end);
+  const out: Record<string, string> = {};
+  for (const line of block.split("\n")) {
+    const m = /^([A-Za-z0-9_-]+)\s*:\s*(.+)$/.exec(line.trim());
+    if (!m) continue;
+    const key = m[1]!;
+    const val = m[2]!.trim().replace(/^["']|["']$/g, "");
+    if (val) out[key] = val;
+  }
+  return out;
+}
+
 function parseFrontmatterLite(mdPath: string): Record<string, string> {
   try {
     const fd = fs.openSync(mdPath, "r");
     const buf = Buffer.alloc(2048);
     const bytes = fs.readSync(fd, buf, 0, 2048, 0);
     fs.closeSync(fd);
-    const head = buf.subarray(0, bytes).toString("utf-8").replace(/\r\n/g, "\n");
-    if (!head.startsWith("---\n")) return {};
-    const end = head.indexOf("\n---\n", 4);
-    if (end < 0) return {};
-    const block = head.slice(4, end);
-    const out: Record<string, string> = {};
-    for (const line of block.split("\n")) {
-      const m = /^([A-Za-z0-9_-]+)\s*:\s*(.+)$/.exec(line.trim());
-      if (!m) continue;
-      const key = m[1]!;
-      const val = m[2]!.trim().replace(/^["']|["']$/g, "");
-      if (val) out[key] = val;
-    }
-    return out;
+    return parseFrontmatterLiteFromBuffer(buf, bytes);
   } catch {
     return {};
   }
 }
 
-export function inspectTopicFolder(vaultRoot: string, relFolder: string, fallbackAreaId?: string): VaultTopicAssets | null {
-  const normFolder = relFolder.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
-  if (!normFolder) return null;
-  const abs = path.join(vaultRoot, normFolder);
-  let entries: fs.Dirent[];
+async function parseFrontmatterLiteAsync(mdPath: string): Promise<Record<string, string>> {
+  let fh: fs.promises.FileHandle | null = null;
   try {
-    entries = fs.readdirSync(abs, { withFileTypes: true });
+    fh = await fs.promises.open(mdPath, "r");
+    const buf = Buffer.alloc(2048);
+    const { bytesRead } = await fh.read(buf, 0, 2048, 0);
+    return parseFrontmatterLiteFromBuffer(buf, bytesRead);
   } catch {
-    return null;
+    return {};
+  } finally {
+    if (fh) await fh.close().catch(() => {});
   }
-  const files = entries.filter((e) => e.isFile()).map((e) => e.name);
-  const folderBase = path.posix.basename(normFolder);
+}
 
-  // Nota teórica: preferimos `<carpeta>.md`, o el primer `.md` que no sea `.practica.md` ni `_tema.md` ni ejercicio
+function buildTopicAssets(
+  normFolder: string,
+  files: string[],
+  fmPrimary: Record<string, string>,
+  fmManifest: Record<string, string>,
+  fallbackAreaId?: string,
+): VaultTopicAssets | null {
+  const folderBase = path.posix.basename(normFolder);
   const exactMd = files.find((f) => f === `${folderBase}.md`);
   const otherMd = files.find(
     (f) =>
@@ -139,13 +152,24 @@ export function inspectTopicFolder(vaultRoot: string, relFolder: string, fallbac
     return null;
   }
 
-  const fm = theoryFile
-    ? parseFrontmatterLite(path.join(abs, theoryFile))
-    : practiceFile
-      ? parseFrontmatterLite(path.join(abs, practiceFile))
-      : {};
-
-  const fmId = fm.nv_topic_id || fm.id || undefined;
+  const fm = { ...fmManifest, ...fmPrimary };
+  const extraIds = Array.from(
+    new Set(
+      [
+        fmPrimary.nv_topic_id,
+        fmPrimary.topic_id,
+        fmPrimary.id,
+        fmPrimary.curriculum_id,
+        fmManifest.nv_topic_id,
+        fmManifest.topic_id,
+        fmManifest.id,
+        fmManifest.curriculum_id,
+      ]
+        .map((v) => (v ? v.trim().toLowerCase() : ""))
+        .filter(Boolean),
+    ),
+  );
+  const fmId = fm.nv_topic_id || fm.topic_id || fm.id || fm.curriculum_id || undefined;
   const areaId = fm.nv_area_id || fm.area || fallbackAreaId;
   const topicId = canonicalTopicId(areaId, normFolder, fmId);
   const title = fm.number && fm.title ? `${fm.number} ${fm.title}` : fm.title || folderBase;
@@ -155,12 +179,80 @@ export function inspectTopicFolder(vaultRoot: string, relFolder: string, fallbac
     topicId,
     title,
     ...(fmId ? { frontmatterId: fmId } : {}),
+    ...(extraIds.length ? { extraIds } : {}),
     ...(fm.nv_plan_id ? { planId: fm.nv_plan_id } : {}),
     ...(areaId ? { areaId } : {}),
     theoryNote: theoryFile ? `${normFolder}/${theoryFile}` : null,
     practiceNote: practiceFile ? `${normFolder}/${practiceFile}` : null,
     canvasFile: canvasName ? `${normFolder}/${canvasName}` : null,
   };
+}
+
+export function inspectTopicFolder(vaultRoot: string, relFolder: string, fallbackAreaId?: string, preloadedFiles?: string[]): VaultTopicAssets | null {
+  const normFolder = relFolder.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+  if (!normFolder) return null;
+  const abs = path.join(vaultRoot, normFolder);
+  let files = preloadedFiles;
+  if (!files) {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(abs, { withFileTypes: true });
+    } catch {
+      return null;
+    }
+    files = entries.filter((e) => e.isFile()).map((e) => e.name);
+  }
+  const folderBase = path.posix.basename(normFolder);
+  const exactMd = files.find((f) => f === `${folderBase}.md`);
+  const otherMd = files.find(
+    (f) =>
+      f.endsWith(".md") &&
+      !f.endsWith(".practica.md") &&
+      f !== "_tema.md" &&
+      !f.startsWith("_") &&
+      !/\bejercicio\b/i.test(f),
+  );
+  const theoryFile = exactMd ?? otherMd ?? null;
+  const practiceFile = files.find((f) => f.endsWith(".practica.md")) ?? null;
+  const hasManifest = files.includes("_tema.md");
+  const hasCanvas = files.some((f) => f.endsWith(".canvas"));
+  if (!theoryFile && !practiceFile && !hasCanvas && !hasManifest) return null;
+
+  const fmPrimary = theoryFile
+    ? parseFrontmatterLite(path.join(abs, theoryFile))
+    : practiceFile
+      ? parseFrontmatterLite(path.join(abs, practiceFile))
+      : {};
+  const fmManifest = hasManifest ? parseFrontmatterLite(path.join(abs, "_tema.md")) : {};
+  return buildTopicAssets(normFolder, files, fmPrimary, fmManifest, fallbackAreaId);
+}
+
+async function inspectTopicFolderAsync(vaultRoot: string, relFolder: string, files: string[], fallbackAreaId?: string): Promise<VaultTopicAssets | null> {
+  const normFolder = relFolder.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+  if (!normFolder) return null;
+  const folderBase = path.posix.basename(normFolder);
+  const exactMd = files.find((f) => f === `${folderBase}.md`);
+  const otherMd = files.find(
+    (f) =>
+      f.endsWith(".md") &&
+      !f.endsWith(".practica.md") &&
+      f !== "_tema.md" &&
+      !f.startsWith("_") &&
+      !/\bejercicio\b/i.test(f),
+  );
+  const theoryFile = exactMd ?? otherMd ?? null;
+  const practiceFile = files.find((f) => f.endsWith(".practica.md")) ?? null;
+  const hasManifest = files.includes("_tema.md");
+  const hasCanvas = files.some((f) => f.endsWith(".canvas"));
+  if (!theoryFile && !practiceFile && !hasCanvas && !hasManifest) return null;
+
+  const abs = path.join(vaultRoot, normFolder);
+  const primaryPath = theoryFile ? path.join(abs, theoryFile) : practiceFile ? path.join(abs, practiceFile) : null;
+  const [fmPrimary, fmManifest] = await Promise.all([
+    primaryPath ? parseFrontmatterLiteAsync(primaryPath) : Promise.resolve({}),
+    hasManifest ? parseFrontmatterLiteAsync(path.join(abs, "_tema.md")) : Promise.resolve({}),
+  ]);
+  return buildTopicAssets(normFolder, files, fmPrimary, fmManifest, fallbackAreaId);
 }
 
 export function topicIdIndexPath(vaultRoot: string): string {
@@ -179,43 +271,79 @@ export function saveTopicIdIndex(vaultRoot: string, indexFile: TopicIdIndexFile)
   store.writeJson(topicIdIndexPath(vaultRoot), indexFile);
 }
 
+const TOPIC_INDEX_TTL_MS = 300_000;
+const _topicIndexCache = new Map<string, { index: ScannedVaultIndex; ts: number }>();
+const _topicIndexInflight = new Map<string, Promise<ScannedVaultIndex>>();
+
+export function clearTopicIndexCache(vaultRoot?: string): void {
+  if (vaultRoot) {
+    const key = path.resolve(vaultRoot);
+    _topicIndexCache.delete(key);
+    _topicIndexInflight.delete(key);
+  } else {
+    _topicIndexCache.clear();
+    _topicIndexInflight.clear();
+  }
+}
+
+function registerAssets(
+  maps: {
+    byId: Map<string, VaultTopicAssets>;
+    byFolder: Map<string, VaultTopicAssets>;
+    bySuffix: Map<string, VaultTopicAssets>;
+    bySlug: Map<string, VaultTopicAssets>;
+    all: VaultTopicAssets[];
+  },
+  assets: VaultTopicAssets,
+): void {
+  maps.all.push(assets);
+  maps.byFolder.set(assets.folder, assets);
+  maps.byId.set(assets.topicId.toLowerCase(), assets);
+  if (assets.frontmatterId) {
+    maps.byId.set(assets.frontmatterId.toLowerCase(), assets);
+  }
+  if (assets.extraIds) {
+    for (const id of assets.extraIds) {
+      if (!maps.byId.has(id)) maps.byId.set(id, assets);
+    }
+  }
+  const parts = assets.folder.split("/");
+  const base = parts[parts.length - 1]!;
+  const slug = slugifyTopic(base);
+  if (slug && !maps.bySlug.has(slug)) {
+    maps.bySlug.set(slug, assets);
+  }
+  if (parts.length >= 1) {
+    const s1 = parts.slice(-1).join("/").toLowerCase();
+    if (!maps.bySuffix.has(s1)) maps.bySuffix.set(s1, assets);
+  }
+  if (parts.length >= 2) {
+    const s2 = parts.slice(-2).join("/").toLowerCase();
+    if (!maps.bySuffix.has(s2)) maps.bySuffix.set(s2, assets);
+  }
+  if (parts.length >= 3) {
+    const s3 = parts.slice(-3).join("/").toLowerCase();
+    if (!maps.bySuffix.has(s3)) maps.bySuffix.set(s3, assets);
+  }
+}
+
 /**
  * Escanea recursivamente la vault y construye un índice en memoria por `topicId`, ruta relativa,
- * sufijo de ruta (para cuando la carpeta raíz se movió) y slug del nombre del tema.
+ * sufijo de ruta y slug del nombre del tema (cacheado 5 min e invalidado por FileWatcher).
  */
-export function scanVaultTopics(vaultRoot: string): ScannedVaultIndex {
-  const byId = new Map<string, VaultTopicAssets>();
-  const byFolder = new Map<string, VaultTopicAssets>();
-  const bySuffix = new Map<string, VaultTopicAssets>();
-  const bySlug = new Map<string, VaultTopicAssets>();
-  const all: VaultTopicAssets[] = [];
+export function scanVaultTopics(vaultRoot: string, force = false): ScannedVaultIndex {
+  const key = path.resolve(vaultRoot);
+  const hit = _topicIndexCache.get(key);
+  if (!force && hit && Date.now() - hit.ts < TOPIC_INDEX_TTL_MS) {
+    return hit.index;
+  }
 
-  const register = (assets: VaultTopicAssets): void => {
-    all.push(assets);
-    byFolder.set(assets.folder, assets);
-    byId.set(assets.topicId.toLowerCase(), assets);
-    if (assets.frontmatterId) {
-      byId.set(assets.frontmatterId.toLowerCase(), assets);
-    }
-    const parts = assets.folder.split("/");
-    const base = parts[parts.length - 1]!;
-    const slug = slugifyTopic(base);
-    if (slug && !bySlug.has(slug)) {
-      bySlug.set(slug, assets);
-    }
-    // Sufijos de 1 y 2 niveles (ej: "4 Backend/4.1 What the backend is" y "4.1 What the backend is")
-    if (parts.length >= 1) {
-      const s1 = parts.slice(-1).join("/").toLowerCase();
-      if (!bySuffix.has(s1)) bySuffix.set(s1, assets);
-    }
-    if (parts.length >= 2) {
-      const s2 = parts.slice(-2).join("/").toLowerCase();
-      if (!bySuffix.has(s2)) bySuffix.set(s2, assets);
-    }
-    if (parts.length >= 3) {
-      const s3 = parts.slice(-3).join("/").toLowerCase();
-      if (!bySuffix.has(s3)) bySuffix.set(s3, assets);
-    }
+  const maps = {
+    byId: new Map<string, VaultTopicAssets>(),
+    byFolder: new Map<string, VaultTopicAssets>(),
+    bySuffix: new Map<string, VaultTopicAssets>(),
+    bySlug: new Map<string, VaultTopicAssets>(),
+    all: [] as VaultTopicAssets[],
   };
 
   const walk = (absDir: string, relDir: string, depth: number): void => {
@@ -227,10 +355,9 @@ export function scanVaultTopics(vaultRoot: string): ScannedVaultIndex {
       return;
     }
     if (relDir) {
-      const inspected = inspectTopicFolder(vaultRoot, relDir);
-      if (inspected) {
-        register(inspected);
-      }
+      const files = entries.filter((e) => e.isFile()).map((e) => e.name);
+      const inspected = inspectTopicFolder(vaultRoot, relDir, undefined, files);
+      if (inspected) registerAssets(maps, inspected);
     }
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
@@ -242,18 +369,69 @@ export function scanVaultTopics(vaultRoot: string): ScannedVaultIndex {
   };
 
   walk(vaultRoot, "", 0);
+  _topicIndexCache.set(key, { index: maps, ts: Date.now() });
+  return maps;
+}
 
-  // Incorporar también los alias guardados en `.notevault/mentor/topic_id_index.json`
-  const saved = loadTopicIdIndex(vaultRoot);
-  for (const [idKey, item] of Object.entries(saved.entries)) {
-    const hit = byFolder.get(item.folder) ?? bySlug.get(slugifyTopic(path.posix.basename(item.folder)));
-    if (hit) {
-      byId.set(idKey.toLowerCase(), hit);
-      byId.set(item.topicId.toLowerCase(), hit);
-    }
+/** Versión no bloqueante de `scanVaultTopics` usando `fs.promises` y pausas para no congelar Electron en Windows. */
+export async function scanVaultTopicsAsync(vaultRoot: string, force = false): Promise<ScannedVaultIndex> {
+  const key = path.resolve(vaultRoot);
+  const hit = _topicIndexCache.get(key);
+  if (!force && hit && Date.now() - hit.ts < TOPIC_INDEX_TTL_MS) {
+    return hit.index;
   }
+  const existing = _topicIndexInflight.get(key);
+  if (!force && existing) return existing;
 
-  return { byId, byFolder, bySuffix, bySlug, all };
+  const task = (async (): Promise<ScannedVaultIndex> => {
+    const maps = {
+      byId: new Map<string, VaultTopicAssets>(),
+      byFolder: new Map<string, VaultTopicAssets>(),
+      bySuffix: new Map<string, VaultTopicAssets>(),
+      bySlug: new Map<string, VaultTopicAssets>(),
+      all: [] as VaultTopicAssets[],
+    };
+    const queue: Array<{ absDir: string; relDir: string; depth: number }> = [
+      { absDir: vaultRoot, relDir: "", depth: 0 },
+    ];
+
+    while (queue.length) {
+      const batch = queue.splice(0, 32);
+      await Promise.all(
+        batch.map(async ({ absDir, relDir, depth }) => {
+          if (depth > 7) return;
+          let entries: fs.Dirent[];
+          try {
+            entries = await fs.promises.readdir(absDir, { withFileTypes: true });
+          } catch {
+            return;
+          }
+          if (relDir) {
+            const files = entries.filter((e) => e.isFile()).map((e) => e.name);
+            const inspected = await inspectTopicFolderAsync(vaultRoot, relDir, files);
+            if (inspected) registerAssets(maps, inspected);
+          }
+          for (const entry of entries) {
+            if (!entry.isDirectory()) continue;
+            if (entry.name.startsWith(".") || IGNORED_DIRS.has(entry.name)) continue;
+            if (entry.name === "Ejercicios" || entry.name === "attachments" || entry.name === "assets") continue;
+            const childRel = relDir ? `${relDir}/${entry.name}` : entry.name;
+            queue.push({ absDir: path.join(absDir, entry.name), relDir: childRel, depth: depth + 1 });
+          }
+        }),
+      );
+    }
+
+    _topicIndexCache.set(key, { index: maps, ts: Date.now() });
+    return maps;
+  })();
+
+  _topicIndexInflight.set(key, task);
+  try {
+    return await task;
+  } finally {
+    if (_topicIndexInflight.get(key) === task) _topicIndexInflight.delete(key);
+  }
 }
 
 export function resolveTopicInIndex(
@@ -320,9 +498,20 @@ export function resolveAndEnsureTopicAssets(
   canvasGenerated: boolean;
 } {
   const normFolder = query.folder.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
-  let assets = inspectTopicFolder(vaultRoot, normFolder, query.areaId);
+  let assets: VaultTopicAssets | null = null;
   let relocated = false;
 
+  // Resolver SIEMPRE primero por ID en el índice vivo de la vault (en lugar de depender de rutas guardadas).
+  if (query.topicId) {
+    const index = scanVaultTopics(vaultRoot);
+    assets = resolveTopicInIndex(index, query);
+    if (assets && assets.folder !== normFolder) {
+      relocated = true;
+    }
+  }
+  if (!assets) {
+    assets = inspectTopicFolder(vaultRoot, normFolder, query.areaId);
+  }
   if (!assets) {
     const index = scanVaultTopics(vaultRoot);
     assets = resolveTopicInIndex(index, query);
@@ -371,59 +560,169 @@ export function resolveAndEnsureTopicAssets(
   };
 }
 
-/**
- * Comprueba si el plan actual tiene temas cuya ubicación en la vault cambió o a los que les falta
- * su `.canvas` explicativo pese a tener su nota teórica `.md`.
- */
-export function checkPlanVaultSync(vaultRoot: string, plan: Plan): PlanVaultSyncStatus {
-  const index = scanVaultTopics(vaultRoot);
-  const savedIndex = loadTopicIdIndex(vaultRoot);
+function computePlanVaultSync(index: ScannedVaultIndex, plan: Plan): PlanVaultSyncStatus {
   const relocated: Array<{ oldFolder: string; newFolder: string; title: string; topicId: string }> = [];
   const missingCanvases: Array<{ folder: string; title: string; topicId: string }> = [];
   let unindexedCount = 0;
 
-  const seenFolders = new Set<string>();
+  const seenKeys = new Set<string>();
   for (const sub of plan.subplans) {
     for (const t of sub.topics) {
       if (t.route === "skipped") continue;
-      if (seenFolders.has(t.folder)) continue;
-      seenFolders.add(t.folder);
+      const dedupKey = (t.topicId || t.folder).toLowerCase();
+      if (seenKeys.has(dedupKey)) continue;
+      seenKeys.add(dedupKey);
 
-      const direct = index.byFolder.get(t.folder);
-      const resolved = direct ?? resolveTopicInIndex(index, { folder: t.folder, topicId: t.topicId, title: t.title, areaId: sub.areaId ?? sub.id });
+      // Resolver SIEMPRE por ID primero; la ruta guardada en el plan es solo fallback.
+      const resolved = resolveTopicInIndex(index, {
+        folder: t.folder,
+        topicId: t.topicId,
+        title: t.title,
+        areaId: sub.areaId ?? sub.id,
+      });
 
-      if (!t.topicId || !savedIndex.entries[t.topicId]) {
+      if (!t.topicId) {
         unindexedCount++;
       }
 
-      if (resolved) {
-        if (resolved.folder !== t.folder) {
-          relocated.push({
-            oldFolder: t.folder,
-            newFolder: resolved.folder,
-            title: t.title,
-            topicId: resolved.topicId,
-          });
-        }
-        if (resolved.theoryNote && !resolved.canvasFile) {
-          missingCanvases.push({
-            folder: resolved.folder,
-            title: t.title,
-            topicId: resolved.topicId,
-          });
-        }
+      if (resolved && resolved.folder !== t.folder) {
+        relocated.push({
+          oldFolder: t.folder,
+          newFolder: resolved.folder,
+          title: t.title,
+          topicId: resolved.topicId,
+        });
       }
     }
   }
 
   return {
     planId: plan.id,
-    needsSync: relocated.length > 0 || missingCanvases.length > 0,
+    // No reportar falsos positivos de «faltan canvas»: solo sincronizar cuando un ID real cambió de carpeta.
+    needsSync: relocated.length > 0,
     relocatedCount: relocated.length,
-    missingCanvasCount: missingCanvases.length,
+    missingCanvasCount: 0,
     unindexedCount,
     relocated,
     missingCanvases,
+  };
+}
+
+/**
+ * Comprueba si el plan actual tiene temas cuya ubicación en la vault cambió (resolviendo por ID).
+ */
+export function checkPlanVaultSync(vaultRoot: string, plan: Plan): PlanVaultSyncStatus {
+  const index = scanVaultTopics(vaultRoot);
+  return computePlanVaultSync(index, plan);
+}
+
+/** Versión no bloqueante de `checkPlanVaultSync` para no congelar Electron al abrir el Mentor. */
+export async function checkPlanVaultSyncAsync(vaultRoot: string, plan: Plan): Promise<PlanVaultSyncStatus> {
+  const index = await scanVaultTopicsAsync(vaultRoot);
+  return computePlanVaultSync(index, plan);
+}
+
+/** Versión no bloqueante de `reconcilePlanWithVault` que resuelve por IDs vivos de la vault. */
+export async function reconcilePlanWithVaultAsync(
+  vaultRoot: string,
+  plan: Plan,
+  opts?: { generateCanvases?: boolean },
+): Promise<{
+  plan: Plan;
+  changedPlan: boolean;
+  relocatedCount: number;
+  generatedCanvases: number;
+  indexedCount: number;
+}> {
+  const generateCanvases = opts?.generateCanvases === true;
+  const index = await scanVaultTopicsAsync(vaultRoot, true);
+
+  let changedPlan = false;
+  let relocatedCount = 0;
+  let generatedCanvases = 0;
+  let indexedCount = 0;
+  const folderRemap = new Map<string, string>();
+  const processedCanvases = new Set<string>();
+  const canvasQueue: string[] = [];
+
+  const nextSubplans = plan.subplans.map((sub) => {
+    const areaKey = sub.areaId ?? sub.id;
+    const nextTopics = sub.topics.map((t) => {
+      const resolved = resolveTopicInIndex(index, {
+        folder: t.folder,
+        topicId: t.topicId,
+        title: t.title,
+        areaId: areaKey,
+      });
+
+      const nextFolder = resolved ? resolved.folder : t.folder;
+      const nextTopicId = resolved ? resolved.topicId : t.topicId || canonicalTopicId(areaKey, t.folder);
+
+      if (nextFolder !== t.folder) {
+        relocatedCount++;
+        changedPlan = true;
+        folderRemap.set(t.folder, nextFolder);
+      }
+      if (nextTopicId !== t.topicId) {
+        changedPlan = true;
+      }
+      indexedCount++;
+
+      if (generateCanvases && resolved && resolved.theoryNote && !resolved.canvasFile && !processedCanvases.has(resolved.folder)) {
+        processedCanvases.add(resolved.folder);
+        canvasQueue.push(resolved.folder);
+      }
+
+      return {
+        ...t,
+        folder: nextFolder,
+        topicId: nextTopicId,
+      };
+    });
+
+    const nextWeeks = sub.weeks.map((w) => ({
+      ...w,
+      topics: w.topics.map((f) => folderRemap.get(f) ?? f),
+    }));
+
+    return {
+      ...sub,
+      topics: nextTopics,
+      weeks: nextWeeks,
+    };
+  });
+
+  // Generar canvases opcionales cediendo al event loop para no congelar nunca la ventana.
+  for (const relFolder of canvasQueue) {
+    try {
+      const gen = generateConcept(path.join(vaultRoot, relFolder));
+      if (fs.existsSync(gen.canvasPath)) generatedCanvases++;
+    } catch {
+      // Ignorar notas que no tengan formato de mapa conceptual
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  const nextExtraTopics = plan.extraTopics?.map((et) => ({
+    ...et,
+    folder: folderRemap.get(et.folder) ?? et.folder,
+  }));
+
+  const updatedPlan: Plan = changedPlan
+    ? {
+        ...plan,
+        updatedAt: new Date().toISOString(),
+        subplans: nextSubplans,
+        ...(nextExtraTopics ? { extraTopics: nextExtraTopics } : {}),
+      }
+    : plan;
+
+  return {
+    plan: updatedPlan,
+    changedPlan,
+    relocatedCount,
+    generatedCanvases,
+    indexedCount,
   };
 }
 

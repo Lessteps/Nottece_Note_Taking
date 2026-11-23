@@ -205,27 +205,112 @@ export function clearExerciseIndexCache(): void {
   _cache.clear();
 }
 
-/**
- * Read `paths` into the per-file cache in batches, yielding to the event loop
- * between them.
- *
- * The first `scanVault` of a cold process reads every note of the vault: measured
- * 30 s of disk I/O over 2 107 notes (0.35 ms each once the OS cache is warm). This
- * warming moves that cost off the click that needs it, and the yields keep the
- * main process answering IPC while it runs, instead of freezing the window.
- */
-export async function warmNoteCache(paths: Iterable<string>, batch = 150): Promise<number> {
-  let read = 0;
-  let sinceYield = 0;
-  for (const p of paths) {
-    _read(p);
-    read += 1;
-    if (++sinceYield >= batch) {
-      sinceYield = 0;
-      await new Promise((resolve) => setImmediate(resolve));
+async function _readAsync(filePath: string): Promise<CacheEntry | null> {
+  let st: fs.Stats;
+  try {
+    st = await fs.promises.stat(filePath);
+  } catch {
+    return null;
+  }
+  const stamp: CacheStamp = [st.mtimeMs, st.size];
+  const hit = _cache.get(filePath);
+  if (hit && hit[0][0] === stamp[0] && hit[0][1] === stamp[1]) {
+    return hit[1];
+  }
+
+  let text: string;
+  try {
+    text = await fs.promises.readFile(filePath, "utf-8");
+  } catch {
+    return null;
+  }
+
+  let fm: Record<string, any> = {};
+  if (text.startsWith("---")) {
+    try {
+      const [data] = parseFrontmatter(text);
+      fm = (data as Record<string, any>) || {};
+    } catch {
+      fm = {};
     }
   }
+
+  const hasCards = _CARDS_RE.test(text);
+  const entry: CacheEntry = [
+    typeof fm === "object" && fm !== null ? fm : {},
+    hasCards ? text : "",
+  ];
+  _cache.set(filePath, [stamp, entry]);
+  return entry;
+}
+
+/**
+ * Read `paths` into the per-file cache asynchronously in parallel batches.
+ * `fs.promises` runs on libuv's worker pool, keeping Electron's main thread responsive
+ * without paying Windows' 15.6ms `setTimeout(0)` timer penalty per batch.
+ */
+export async function warmNoteCache(paths: Iterable<string>, batch = 64): Promise<number> {
+  const list = Array.isArray(paths) ? paths : Array.from(paths);
+  let read = 0;
+  for (let i = 0; i < list.length; i += batch) {
+    const chunk = list.slice(i, i + batch);
+    await Promise.all(chunk.map((p) => _readAsync(path.resolve(p))));
+    read += chunk.length;
+  }
   return read;
+}
+
+/** Non-blocking variant of `scanVault` using parallel async I/O. */
+export async function scanVaultAsync(
+  vaultRoot: string,
+  paths: Iterable<string>,
+  batch = 64
+): Promise<VaultScan> {
+  const resolvedRoot = path.resolve(vaultRoot);
+  const scan = new VaultScan();
+  const list = Array.isArray(paths) ? paths : Array.from(paths);
+
+  for (let i = 0; i < list.length; i += batch) {
+    const chunk = list.slice(i, i + batch);
+    const entries = await Promise.all(
+      chunk.map(async (p) => {
+        const absPath = path.resolve(p);
+        const entry = await _readAsync(absPath);
+        return entry ? { absPath, entry } : null;
+      })
+    );
+    for (const item of entries) {
+      if (!item) continue;
+      const { absPath, entry } = item;
+      const [fm, text] = entry;
+      const rel = (() => {
+        try {
+          return path.relative(resolvedRoot, absPath).replace(/\\/g, "/");
+        } catch {
+          return absPath.replace(/\\/g, "/");
+        }
+      })();
+      scan.notes.push({ path: absPath, rel, frontmatter: fm });
+      if (isPracticeFrontmatter(fm)) {
+        if (!isTrue(fm.archived)) scan.exercises.push(exerciseRef(absPath, resolvedRoot, fm));
+      } else if (text) {
+        const stem = path.basename(absPath, path.extname(absPath));
+        scan.card_notes.push({
+          path: absPath,
+          rel,
+          concept_id: String(fm.id ?? "").trim() || stem,
+          title: String(fm.title ?? "").trim() || stem,
+          subject: String(fm.subject ?? "general").trim().toLowerCase(),
+          frontmatter: fm,
+          text,
+        });
+      }
+    }
+  }
+
+  scan.exercises.sort((a, b) => a.rel.toLowerCase().localeCompare(b.rel.toLowerCase()));
+  scan.card_notes.sort((a, b) => a.rel.toLowerCase().localeCompare(b.rel.toLowerCase()));
+  return scan;
 }
 
 function _read(filePath: string): CacheEntry | null {

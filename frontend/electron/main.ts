@@ -16,9 +16,9 @@ import { installZoom } from "./zoom";
 // Allow HTML5 video and audio autoplay in embedded views
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 
-// Enforce V8 memory caps, optimize for size and limit renderer processes
-app.commandLine.appendSwitch("js-flags", "--max-old-space-size=256 --optimize_for_size");
-app.commandLine.appendSwitch("renderer-process-limit", "2");
+// Cap V8 heap reasonably for large vaults (e.g. 10k+ notes) without triggering GC thrashing or OOM.
+app.commandLine.appendSwitch("js-flags", "--max-old-space-size=1024");
+app.commandLine.appendSwitch("renderer-process-limit", "3");
 app.commandLine.appendSwitch("disk-cache-size", "67108864");
 app.commandLine.appendSwitch("media-cache-size", "33554432");
 
@@ -36,15 +36,21 @@ try {
   if (rendering.mode === "software") {
     app.disableHardwareAcceleration();
   } else {
-    app.commandLine.appendSwitch("ignore-gpu-blocklist");
-    app.commandLine.appendSwitch("enable-gpu-rasterization");
-    if (process.platform !== "linux") {
-      app.commandLine.appendSwitch("enable-zero-copy");
+    if (process.platform === "win32") {
+      // Avoid SkiaGraphite / zero-copy compositor stalls on hybrid AMD/NVIDIA Windows GPUs.
+      app.commandLine.appendSwitch("disable-features", "SkiaGraphite");
+      app.commandLine.appendSwitch("use-angle", rendering.angle !== "default" ? rendering.angle : "d3d11");
     } else {
-      app.commandLine.appendSwitch("disable-features", "UseChromeOSDirectVideoDecoder");
-    }
-    if (rendering.angle !== "default") {
-      app.commandLine.appendSwitch("use-angle", rendering.angle);
+      app.commandLine.appendSwitch("ignore-gpu-blocklist");
+      app.commandLine.appendSwitch("enable-gpu-rasterization");
+      if (process.platform === "darwin") {
+        app.commandLine.appendSwitch("enable-zero-copy");
+      } else {
+        app.commandLine.appendSwitch("disable-features", "UseChromeOSDirectVideoDecoder");
+      }
+      if (rendering.angle !== "default") {
+        app.commandLine.appendSwitch("use-angle", rendering.angle);
+      }
     }
     if (rendering.angle === "vulkan") {
       app.commandLine.appendSwitch("enable-features", "Vulkan");
@@ -187,7 +193,7 @@ app.whenReady().then(() => {
     void warmStudyIndex()
       .then((r) => console.log(`study index warm: ${r.notes} notes in ${r.ms} ms`))
       .catch((e) => console.warn("study index warm failed:", e));
-  }, 300);
+  }, 200);
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

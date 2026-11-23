@@ -7,7 +7,7 @@
 import { scanVault, type VaultScan } from "../core/practice/exerciseIndex.js";
 import type { AppState } from "./appState.js";
 
-export const SCAN_CACHE_TTL_MS = 30_000;
+export const SCAN_CACHE_TTL_MS = 300_000;
 
 const _scanCache = new Map<string, { data: VaultScan; timestamp: number }>();
 
@@ -26,6 +26,10 @@ export function vaultScan(app: AppState): VaultScan {
   const data = scanVault(app.root, app.vault.notePaths());
   _scanCache.set(app.root, { data, timestamp: Date.now() });
   return data;
+}
+
+export function setVaultScanCache(root: string, data: VaultScan): void {
+  _scanCache.set(root, { data, timestamp: Date.now() });
 }
 
 export function hasVaultScan(root: string): boolean {

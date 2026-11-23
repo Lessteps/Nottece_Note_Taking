@@ -23,8 +23,8 @@ import { loadProfile, suggestFocus } from "../../core/ppractice/profile.js";
 import { objectiveText, resolveObjective, sanitizeObjective, subjectLabel } from "../../core/mentor/objective.js";
 import {
   canonicalTopicId,
-  checkPlanVaultSync,
-  reconcilePlanWithVault,
+  checkPlanVaultSyncAsync,
+  reconcilePlanWithVaultAsync,
   resolveAndEnsureTopicAssets,
 } from "../../core/mentor/topicIdResolver.js";
 import {
@@ -2808,14 +2808,14 @@ export function mentorApi(app: AppState, send?: SendFn) {
      * Verifica si el plan tiene temas cuya estructura de carpetas cambió en la vault o a los que les falta
      * generar su `.canvas` explicativo.
      */
-    mentor_plan_vault_check(opts: unknown) {
+    async mentor_plan_vault_check(opts: unknown) {
       const o = (opts && typeof opts === "object" ? opts : {}) as Record<string, any>;
       const id = String(o.planId ?? o.id ?? "");
       if (!PLAN_ID_RE.test(id)) throw new ApiError("Plan inválido.");
       const st = new PlanStore(app.root);
       const plan = st.load(id);
       if (!plan) throw new ApiError("Ese plan ya no existe.");
-      return checkPlanVaultSync(app.root, plan);
+      return await checkPlanVaultSyncAsync(app.root, plan);
     },
 
     /**
@@ -2868,14 +2868,14 @@ export function mentorApi(app: AppState, send?: SendFn) {
      * Escanea la vault por IDs de tema, actualiza las rutas de carpetas del plan que hayan cambiado de lugar,
      * guarda `.notevault/mentor/topic_id_index.json` y genera los `.canvas` explicativos pendientes.
      */
-    mentor_plan_vault_reconcile(opts: unknown) {
+    async mentor_plan_vault_reconcile(opts: unknown) {
       const o = (opts && typeof opts === "object" ? opts : {}) as Record<string, any>;
       const id = String(o.planId ?? o.id ?? "");
       if (!PLAN_ID_RE.test(id)) throw new ApiError("Plan inválido.");
       const st = new PlanStore(app.root);
       const plan = st.load(id);
       if (!plan) throw new ApiError("Ese plan ya no existe.");
-      const res = reconcilePlanWithVault(app.root, plan, { generateCanvases: o.generateCanvases !== false });
+      const res = await reconcilePlanWithVaultAsync(app.root, plan, { generateCanvases: o.generateCanvases === true });
       const saved = res.changedPlan ? st.save(res.plan) : plan;
       if (res.changedPlan || res.generatedCanvases > 0) {
         clearTopicSnapCache(app.root);

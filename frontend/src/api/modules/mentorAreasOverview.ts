@@ -34,7 +34,7 @@ export function mentorAreasOverviewApi(app: AppState) {
       return out;
     }
     const attempts = loadAllAttempts(app.root);
-    const folders = items.map((i) => i.folder.replace(/[\\]/g, "/"));
+    const folderSet = new Set(items.map((i) => i.folder.replace(/[\\]/g, "/")));
     for (const ex of scan.exercises) {
       const p = String(ex.rel || ex.path).replace(/[\\]/g, "/");
       const entry = attempts[String(ex.note_id)];
@@ -45,8 +45,17 @@ export function mentorAreasOverviewApi(app: AppState) {
         if (at > last) last = at;
       }
       if (!last) continue;
-      const f = folders.find((x) => p.startsWith(`${x}/`));
-      if (f && last > (out.get(f) ?? "")) out.set(f, last);
+      // O(depth) lookup walking parent segments instead of O(folders) linear scan per exercise
+      let cur = p;
+      let idx = cur.lastIndexOf("/");
+      while (idx > 0) {
+        cur = cur.slice(0, idx);
+        if (folderSet.has(cur)) {
+          if (last > (out.get(cur) ?? "")) out.set(cur, last);
+          break;
+        }
+        idx = cur.lastIndexOf("/");
+      }
     }
     return out;
   };

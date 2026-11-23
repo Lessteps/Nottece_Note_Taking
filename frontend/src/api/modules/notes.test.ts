@@ -126,13 +126,13 @@ describe("notesApi", () => {
     expect(fs.existsSync(path.join(dir, "Renombrada.md"))).toBe(false);
   });
 
-  it("resolve_link resolves wikilink target", () => {
-    expect(api.resolve_link("Target").path).toBe("Target.md");
-    expect(api.resolve_link("Nonexistent").path).toBeNull();
+  it("resolve_link resolves wikilink target", async () => {
+    expect((await api.resolve_link("Target")).path).toBe("Target.md");
+    expect((await api.resolve_link("Nonexistent")).path).toBeNull();
   });
 
-  it("search finds matching notes", () => {
-    const hits = api.search("Spec");
+  it("search finds matching notes", async () => {
+    const hits = await api.search("Spec");
     expect(hits.length).toBeGreaterThan(0);
     expect(hits[0]!.path).toBe("Programación/Spec.md");
   });

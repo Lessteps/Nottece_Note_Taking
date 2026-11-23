@@ -664,18 +664,22 @@ export class NotesService {
     }
 
     const normTarget = toPosix(path.resolve(note.path));
-    for (const other of this.index.notes()) {
+    const needleList = Array.from(nameNeedles);
+    const MAX_PER_BUCKET = 250;
+    const allNotes = this.index.ready ? this.index.cachedNotes() : this.index.notes();
+    for (const other of allNotes) {
+      if (linked.length >= MAX_PER_BUCKET && unlinked.length >= MAX_PER_BUCKET) break;
       if (toPosix(path.resolve(other.path)) === normTarget) {
         continue;
       }
-      if (!Array.from(nameNeedles).some((n) => other.lower.includes(n))) {
+      if (!needleList.some((n) => other.lower.includes(n))) {
         continue;
       }
 
       const lines = other.text.split(/\r?\n/);
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i]!;
-        if (wikilinkMatches(line, targetIds)) {
+        if (linked.length < MAX_PER_BUCKET && wikilinkMatches(line, targetIds)) {
           linked.push({
             path: other.path,
             title: other.title,
@@ -683,7 +687,7 @@ export class NotesService {
             line: line.trim().slice(0, 200),
             linked: true,
           });
-        } else if (plainRes.some((rx) => rx.test(line))) {
+        } else if (unlinked.length < MAX_PER_BUCKET && plainRes.some((rx) => rx.test(line))) {
           unlinked.push({
             path: other.path,
             title: other.title,
